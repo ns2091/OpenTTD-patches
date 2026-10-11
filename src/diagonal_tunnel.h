@@ -33,6 +33,7 @@
 #include "map_func.h"
 
 #include <array>
+#include <functional>
 #include <optional>
 
 /** A diagonal tunnel, this is cached information which is derived from the map. */
