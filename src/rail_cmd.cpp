@@ -47,6 +47,9 @@
 #include "object_base.h"
 #include "tile_cmd.h"
 #include "tile_track_func.h"
+#include "diagonal_tunnel.h"
+#include "newgrf_sound.h"
+#include "engine_base.h"
 
 #include "table/strings.h"
 #include "table/railtypes.h"
@@ -58,6 +61,8 @@
 
 /** Helper type for lists/vectors of trains */
 typedef std::vector<Train *> TrainList;
+
+CommandCost EnsureNoIncompatibleRailtypeTrainOnTrackBits(const TileIndex tile, const TrackBits track_bits, const RailType type);
 
 RailTypeInfo _railtypes[RAILTYPE_END];
 std::vector<RailType> _sorted_railtypes; ///< Sorted list of rail types.
@@ -736,6 +741,14 @@ CommandCost CmdBuildSingleRail(DoCommandFlags flags, TileIndex tile, RailType ra
 
 			if (!IsPlainRail(tile)) return Command<Commands::LandscapeClear>::Do(flags, tile); // just get appropriate error message
 
+			if (IsDiagonalTunnelPortal(tile)) {
+				if (HasTrack(tile, track)) {
+					_rail_track_endtile = tile;
+					return CommandCost(STR_ERROR_ALREADY_BUILT);
+				}
+				return CommandCost(STR_ERROR_NOT_POSSIBLE_ON_DIAGONAL_TUNNEL_PORTAL);
+			}
+
 			CheckTrackCombinationRailTypeChanges changes;
 			ret = CheckTrackCombination(tile, trackbit, railtype, HasFlag(build_flags, BuildRailTrackFlags::NoDualRailType), flags, HasFlag(build_flags, BuildRailTrackFlags::AutoRemoveSignals), changes);
 			if (ret.Succeeded()) {
@@ -978,6 +991,181 @@ CommandCost CmdBuildSingleRail(DoCommandFlags flags, TileIndex tile, RailType ra
 }
 
 /**
+ * Remove a diagonal tunnel, including the portal tracks at both ends.
+ * @param flags operation to perform
+ * @param tile portal tile of either end
+ * @param track portal track of either end
+ * @return the cost of this operation or an error
+ */
+static CommandCost RemoveDiagonalTunnelByPortal(DoCommandFlags flags, TileIndex tile, Track track)
+{
+	CommandCost cost(ExpensesType::Construction);
+
+	const DiagonalTunnel *dt = GetDiagonalTunnel(tile, track);
+	if (dt == nullptr) return CMD_ERROR;
+
+	const std::array<std::pair<TileIndex, Track>, 2> ends = {{ { dt->tile_a, dt->track_a }, { dt->tile_b, dt->track_b } }};
+
+	if (_current_company != OWNER_WATER) {
+		CommandCost ret = CheckTileOwnership(dt->GetOtherEnd(tile));
+		if (ret.Failed()) return ret;
+	}
+
+	for (const auto &[t, tr] : ends) {
+		CommandCost ret = EnsureNoTrainOnTrack(t, tr);
+		if (ret.Failed()) return ret;
+	}
+
+	std::vector<Train *> trains;
+	for (const auto &[t, tr] : ends) {
+		if (HasReservedTracks(t, TrackToTrackBits(tr))) {
+			Train *v = GetTrainForReservation(t, tr);
+			if (v != nullptr) {
+				CommandCost ret = CheckTrainReservationPreventsTrackModification(v);
+				if (ret.Failed()) return ret;
+				include(trains, v);
+			}
+		}
+	}
+
+	cost.AddCost(_price[Price::ClearTunnel] * (dt->length + 2));
+	for (const auto &[t, tr] : ends) {
+		cost.AddCost(RailClearCost(GetTileRailTypeByTrack(t, tr)));
+	}
+
+	if (flags.Test(DoCommandFlag::Execute)) {
+		for (Train *v : trains) FreeTrainTrackReservation(v);
+
+		const Owner owner = GetTileOwner(tile);
+		Company *c = Company::GetIfValid(owner);
+		if (c != nullptr) c->infrastructure.rail[GetRailTypeByTrack(dt->tile_a, dt->track_a)] -= GetDiagonalTunnelInfrastructureCount(dt);
+		RemoveDiagonalTunnel(dt);
+		dt = nullptr;
+
+		for (const auto &[t, tr] : ends) {
+			const TrackBits trackbit = TrackToTrackBits(tr);
+			TrackBits present = GetTrackBits(t);
+			if (c != nullptr) c->infrastructure.rail[GetTileRailTypeByTrackBit(t, trackbit)]--;
+			if (present == TRACK_BIT_HORZ || present == TRACK_BIT_VERT) {
+				present ^= trackbit;
+				SetRailType(t, GetTileRailTypeByTrackBit(t, present));
+				SetSecondaryRailType(t, GetRailType(t));
+				SetTrackBits(t, present);
+				SetTrackReservation(t, GetRailReservationTrackBits(t) & present);
+			} else {
+				DoClearSquare(t);
+				DeleteNewGRFInspectWindow(GrfSpecFeature::RailTypes, t.base());
+			}
+			MarkTileDirtyByTile(t);
+			AddTrackToSignalBuffer(t, tr, owner);
+			YapfNotifyTrackLayoutChange(t, tr);
+		}
+		DirtyCompanyInfrastructureWindows(owner);
+
+		for (Train *v : trains) ReReserveTrainPath(v);
+	}
+
+	_rail_track_endtile = tile;
+	return cost;
+}
+
+/**
+ * Convert the rail type of a diagonal tunnel, i.e. the portal tracks at both ends and the part underground.
+ * @param flags operation to perform
+ * @param dt the tunnel
+ * @param totype the rail type to convert to
+ * @param affected_trains list of trains on the converted tracks
+ * @param[out] converted set to true if anything was converted
+ * @return the cost of this operation or an error
+ */
+static CommandCost ConvertDiagonalTunnelRailType(DoCommandFlags flags, const DiagonalTunnel *dt, RailType totype, TrainList &affected_trains, bool &converted)
+{
+	CommandCost cost(ExpensesType::Construction);
+	converted = false;
+
+	const std::array<std::pair<TileIndex, Track>, 2> ends = {{ { dt->tile_a, dt->track_a }, { dt->tile_b, dt->track_b } }};
+
+	auto is_same_type = [&](RailType type) -> bool {
+		return type == totype || (_settings_game.vehicle.disable_elrails && totype == RAILTYPE_RAIL && type == RAILTYPE_ELECTRIC);
+	};
+
+	std::vector<Train *> vehicles_affected;
+	for (const auto &[t, tr] : ends) {
+		const RailType type = GetRailTypeByTrack(t, tr);
+		if (is_same_type(type)) continue;
+
+		CommandCost ret = CheckTileOwnership(t);
+		if (ret.Failed()) return ret;
+
+		if (!IsCompatibleRail(type, totype)) {
+			ret = EnsureNoIncompatibleRailtypeTrainOnTrackBits(t, TrackToTrackBits(tr), totype);
+			if (ret.Failed()) return ret;
+		}
+
+		if (HasReservedTracks(t, TrackToTrackBits(tr)) && (flags.Test(DoCommandFlag::Execute) || _settings_game.vehicle.train_braking_model == TBM_REALISTIC)) {
+			Train *v = GetTrainForReservation(t, tr);
+			bool check_train = false;
+			if (v != nullptr && !HasPowerOnRail(v->railtypes, totype)) {
+				check_train = true;
+			} else if (v != nullptr && _settings_game.vehicle.train_braking_model == TBM_REALISTIC) {
+				if ((uint)(GetRailTypeInfo(type)->max_speed - 1) > (uint)(GetRailTypeInfo(totype)->max_speed - 1)) {
+					check_train = true;
+				}
+			}
+			if (check_train) {
+				ret = CheckTrainReservationPreventsTrackModification(v);
+				if (ret.Failed()) return ret;
+				include(vehicles_affected, v);
+			}
+		}
+
+		cost.AddCost(RailConvertCost(type, totype) * (1 + (t == dt->tile_a ? dt->length : 0)));
+		converted = true;
+	}
+
+	if (flags.Test(DoCommandFlag::Execute) && converted) {
+		for (Train *v : vehicles_affected) FreeTrainTrackReservation(v);
+
+		for (const auto &[t, tr] : ends) {
+			const RailType type = GetRailTypeByTrack(t, tr);
+			if (is_same_type(type)) continue;
+
+			Company *c = Company::Get(GetTileOwner(t));
+			c->infrastructure.rail[type]--;
+			c->infrastructure.rail[totype]++;
+			if (t == dt->tile_a) {
+				const uint count = GetDiagonalTunnelInfrastructureCount(dt);
+				c->infrastructure.rail[type] -= count;
+				c->infrastructure.rail[totype] += count;
+			}
+			DirtyCompanyInfrastructureWindows(c->index);
+
+			const TrackBits bits = GetTrackBits(t);
+			if ((bits == TRACK_BIT_HORZ || bits == TRACK_BIT_VERT) && !(TrackToTrackBits(tr) & TRACK_BIT_RT_1)) {
+				SetSecondaryRailType(t, totype);
+			} else if (bits == TRACK_BIT_HORZ || bits == TRACK_BIT_VERT) {
+				SetRailType(t, totype);
+			} else {
+				SetRailType(t, totype);
+				SetSecondaryRailType(t, totype);
+			}
+
+			MarkTileDirtyByTile(t);
+			YapfNotifyTrackLayoutChange(t, tr);
+			for (Train *v : VehiclesOnTile<VehicleType::Train>(t)) {
+				include(affected_trains, v->First());
+			}
+		}
+
+		for (Train *v : vehicles_affected) {
+			ReReserveTrainPath(v);
+		}
+	}
+
+	return cost;
+}
+
+/**
  * Remove a single piece of track
  * @param flags operation to perform
  * @param tile tile to remove track from
@@ -1048,6 +1236,11 @@ CommandCost CmdRemoveSingleRail(DoCommandFlags flags, TileIndex tile, Track trac
 			if (_current_company != OWNER_WATER) {
 				CommandCost ret = CheckTileOwnership(tile);
 				if (ret.Failed()) return ret;
+			}
+
+			if (IsDiagonalTunnelPortal(tile)) {
+				if (!HasTrack(tile, track)) return CommandCost(STR_ERROR_THERE_IS_NO_RAILROAD_TRACK);
+				return RemoveDiagonalTunnelByPortal(flags, tile, track);
 			}
 
 			CommandCost ret = EnsureNoTrainOnTrack(tile, track);
@@ -1216,6 +1409,7 @@ bool FloodHalftile(TileIndex t)
 
 	bool flooded = false;
 	if (GetRailGroundType(t) == RailGroundType::HalfTileWater) return flooded;
+	if (IsDiagonalTunnelPortal(t)) return flooded;
 
 	Slope tileh = GetTileSlope(t);
 	TrackBits rail_bits = GetTrackBits(t);
@@ -1576,6 +1770,8 @@ CommandCost CmdBuildSingleSignal(DoCommandFlags flags, TileIndex tile, Track tra
 		if (ret.Failed()) return ret;
 	} else if (!ValParamTrackOrientation(track) || !IsPlainRailTile(tile) || !HasTrack(tile, track)) {
 		return CommandCost(STR_ERROR_THERE_IS_NO_RAILROAD_TRACK);
+	} else if (IsDiagonalTunnelPortal(tile)) {
+		return CommandCost(STR_ERROR_NOT_POSSIBLE_ON_DIAGONAL_TUNNEL_PORTAL);
 	}
 	/* Protect against invalid signal copying */
 	if (signals_copy != 0 && (signals_copy & SignalOnTrack(track)) == 0) return CMD_ERROR;
@@ -2629,6 +2825,30 @@ CommandCost CmdConvertRail(DoCommandFlags flags, TileIndex tile, TileIndex area_
 			continue;
 		}
 
+		if (tt == TileType::Railway && IsPlainRail(tile) && IsDiagonalTunnelPortal(tile)) {
+			/* Diagonal tunnels are converted as a whole, including the far portal track */
+			for (Track track : SetTrackBitIterator(GetTrackBits(tile))) {
+				const DiagonalTunnel *dt = GetDiagonalTunnel(tile, track);
+				if (dt == nullptr) continue;
+
+				/* If both ends are in the area, only convert from end A, to avoid converting twice */
+				if (tile != dt->tile_a || track != dt->track_a) {
+					const TileIndex other_end = dt->tile_a;
+					if (diagonal ? DiagonalTileArea(area_start, area_end).Contains(other_end) : OrthogonalTileArea(area_start, area_end).Contains(other_end)) continue;
+				}
+
+				bool converted;
+				CommandCost ret = ConvertDiagonalTunnelRailType(flags, dt, totype, affected_trains, converted);
+				if (ret.Failed()) {
+					error = std::move(ret);
+					continue;
+				}
+				if (converted) found_convertible_track = true;
+				cost.AddCost(ret.GetCost());
+			}
+			continue;
+		}
+
 		std::vector<Train *> vehicles_affected;
 
 		auto find_train_reservations = [&vehicles_affected, &totype, &flags](TileIndex tile, TrackBits reserved) -> CommandCost {
@@ -2864,6 +3084,7 @@ CommandCost CmdConvertRailTrack(DoCommandFlags flags, TileIndex end_tile, TileIn
 	bool found_convertible_track = false; // whether we actually did convert some track (see bug #7633)
 
 	std::vector<TileIndex> exclude_tiles;
+	std::vector<const DiagonalTunnel *> converted_diagonal_tunnels;
 
 	auto advance_tile = [&]() -> bool {
 		if (tile == end_tile) return false;
@@ -2924,6 +3145,23 @@ CommandCost CmdConvertRailTrack(DoCommandFlags flags, TileIndex end_tile, TileIn
 		CommandCost ret = CheckTileOwnership(tile);
 		if (ret.Failed()) {
 			error = ret;
+			continue;
+		}
+
+		if (tt == TileType::Railway && IsPlainRail(tile) && IsDiagonalTunnelPortal(tile)) {
+			/* Diagonal tunnels are converted as a whole, including the far portal track */
+			const DiagonalTunnel *dt = GetDiagonalTunnel(tile, track);
+			if (dt == nullptr || std::find(converted_diagonal_tunnels.begin(), converted_diagonal_tunnels.end(), dt) != converted_diagonal_tunnels.end()) continue;
+			converted_diagonal_tunnels.push_back(dt);
+
+			bool converted;
+			CommandCost ret = ConvertDiagonalTunnelRailType(flags, dt, totype, affected_trains, converted);
+			if (ret.Failed()) {
+				error = std::move(ret);
+				continue;
+			}
+			if (converted) found_convertible_track = true;
+			cost.AddCost(ret.GetCost());
 			continue;
 		}
 
@@ -3196,7 +3434,9 @@ static CommandCost ClearTile_Rail(TileIndex tile, DoCommandFlags flags)
 			return CommandCost(STR_ERROR_AREA_IS_OWNED_BY_ANOTHER);
 		}
 
-		if (IsPlainRail(tile)) {
+		if (IsPlainRail(tile) && IsDiagonalTunnelPortal(tile)) {
+			return CommandCost(STR_ERROR_MUST_DEMOLISH_TUNNEL_FIRST);
+		} else if (IsPlainRail(tile)) {
 			return CommandCost(STR_ERROR_MUST_REMOVE_RAILROAD_TRACK);
 		} else {
 			return CommandCost(STR_ERROR_BUILDING_MUST_BE_DEMOLISHED);
@@ -4032,6 +4272,66 @@ void DrawTrackBits(TileInfo *ti, TrackBits track, RailType rt, RailGroundType rg
 	}
 }
 
+/**
+ * Draw the ground and the portal tracks of a diagonal tunnel portal tile.
+ * The ground follows the slope of the tile, the portal tracks are flat at the height of the lowest corner.
+ * @param ti Tile info.
+ * @param tracks Portal tracks.
+ */
+static void DrawDiagonalTunnelPortalTrackBits(TileInfo *ti, TrackBits tracks)
+{
+	const RailGroundType rgt = GetRailGroundType(ti->tile);
+
+	/* Ground of the slope */
+	SpriteID ground_image;
+	switch (rgt) {
+		case RailGroundType::Barren:       ground_image = SPR_FLAT_BARE_LAND;  break;
+		case RailGroundType::SnowOrDesert: ground_image = SPR_FLAT_SNOW_DESERT_TILE; break;
+		default:                           ground_image = SPR_FLAT_GRASS_TILE; break;
+	}
+	DrawGroundSprite(ground_image + SlopeToSpriteOffset(ti->tileh), PAL_NONE);
+
+	const bool show_reservation = _game_mode != GameMode::Menu && _settings_client.gui.show_track_reservation;
+	const TrackBits reserved = show_reservation ? GetRailReservationTrackBits(ti->tile) : TRACK_BIT_NONE;
+
+	for (Track track : SetTrackBitIterator(tracks)) {
+		const RailTypeInfo *rti = GetRailTypeInfo(GetRailTypeByTrack(ti->tile, track));
+		const bool is_reserved = HasTrack(reserved, track);
+
+		Corner corner;
+		int overlay_offset;
+		uint track_sprite_offset;
+		SpriteID single;
+		switch (track) {
+			case TRACK_UPPER: corner = CORNER_N; overlay_offset = RTO_N; track_sprite_offset = 2; single = rti->base_sprites.single_n; break;
+			case TRACK_LOWER: corner = CORNER_S; overlay_offset = RTO_S; track_sprite_offset = 3; single = rti->base_sprites.single_s; break;
+			case TRACK_RIGHT: corner = CORNER_E; overlay_offset = RTO_E; track_sprite_offset = 4; single = rti->base_sprites.single_e; break;
+			case TRACK_LEFT:  corner = CORNER_W; overlay_offset = RTO_W; track_sprite_offset = 5; single = rti->base_sprites.single_w; break;
+			default: NOT_REACHED();
+		}
+
+		if (rti->UsesOverlay()) {
+			const SpriteID ground = GetCustomRailSprite(rti, ti->tile, RailSpriteType::Ground);
+			DrawGroundSprite(ground + overlay_offset, PAL_NONE);
+			if (is_reserved) {
+				const SpriteID overlay = GetCustomRailSprite(rti, ti->tile, RailSpriteType::Overlay);
+				DrawGroundSprite(overlay + overlay_offset, PALETTE_CRASH);
+			}
+		} else {
+			/* Flat ground and track of the half tile, which is cut into the slope */
+			SpriteID image = rti->base_sprites.track_y + track_sprite_offset;
+			PaletteID pal = PAL_NONE;
+			if (rgt == RailGroundType::Barren) {
+				pal = PALETTE_TO_BARE_LAND;
+			} else if (rgt == RailGroundType::SnowOrDesert) {
+				image += rti->snow_offset;
+			}
+			DrawGroundSprite(image, pal, &(_dual_track_halftile_sub_sprite[corner]));
+			if (is_reserved) DrawGroundSprite(single, PALETTE_CRASH);
+		}
+	}
+}
+
 void DrawTrackBits(TileInfo *ti, TrackBits track)
 {
 	const bool is_bridge = IsTileType(ti->tile, TileType::TunnelBridge);
@@ -4133,13 +4433,27 @@ static void DrawTile_Rail(TileInfo *ti, DrawTileProcParams params)
 
 		TrackBits rails = GetTrackBits(ti->tile);
 
-		DrawTrackBits(ti, rails);
+		const bool diagonal_tunnel_portal = IsDiagonalTunnelPortal(ti->tile);
+		if (diagonal_tunnel_portal) {
+			DrawDiagonalTunnelPortalTrackBits(ti, rails);
+		} else {
+			DrawTrackBits(ti, rails);
+		}
 
 		if (_display_opt.Test(DisplayOption::FullDetail)) DrawTrackDetails(ti, rti, GetRailGroundType(ti->tile), pal);
 
 		const RailType secondary_railtype = GetTileSecondaryRailTypeIfValid(ti->tile);
 
-		if (HasRailCatenaryDrawn(GetRailType(ti->tile), secondary_railtype)) DrawRailCatenary(ti);
+		if (HasRailCatenaryDrawn(GetRailType(ti->tile), secondary_railtype)) {
+			if (diagonal_tunnel_portal) {
+				/* The portal tracks of diagonal tunnels are flat */
+				TileInfo flat_ti = *ti;
+				flat_ti.tileh = SLOPE_FLAT;
+				DrawRailCatenary(&flat_ti);
+			} else {
+				DrawRailCatenary(ti);
+			}
+		}
 
 		if (HasSignals(ti->tile)) {
 			if (rails == TRACK_BIT_VERT) {
@@ -4296,11 +4610,14 @@ void DrawTrainDepotSprite(int x, int y, DiagDirection dir, RailType railtype)
 }
 
 /** @copydoc GetSlopePixelZProc */
-static int GetSlopePixelZ_Rail(TileIndex tile, uint x, uint y, [[maybe_unused]] bool ground_vehicle)
+static int GetSlopePixelZ_Rail(TileIndex tile, uint x, uint y, bool ground_vehicle)
 {
 	if (IsPlainRail(tile)) {
 		auto [tileh, z] = GetTilePixelSlope(tile);
 		if (tileh == SLOPE_FLAT) return z;
+
+		/* The portal tracks of diagonal tunnels are flat, at the height of the lowest corner */
+		if (IsDiagonalTunnelPortal(tile)) return ground_vehicle ? z : z + GetPartialPixelZ(x & 0xF, y & 0xF, tileh);
 
 		z += ApplyPixelFoundationToSlope(GetRailFoundation(tileh, GetTrackBits(tile)), tileh);
 		return z + GetPartialPixelZ(x & 0xF, y & 0xF, tileh);
@@ -4312,6 +4629,7 @@ static int GetSlopePixelZ_Rail(TileIndex tile, uint x, uint y, [[maybe_unused]] 
 /** @copydoc GetFoundationProc */
 static Foundation GetFoundation_Rail(TileIndex tile, Slope tileh)
 {
+	if (IsPlainRail(tile) && IsDiagonalTunnelPortal(tile)) return Foundation::None;
 	return IsPlainRail(tile) ? GetRailFoundation(tileh, GetTrackBits(tile)) : FlatteningFoundation(tileh);
 }
 
@@ -4473,6 +4791,10 @@ static TrackStatus GetTileTrackStatus_Rail(TileIndex tile, TransportType mode, u
 		default: NOT_REACHED();
 		case RailTileType::Normal:
 			trackbits = GetTrackBits(tile);
+			if (side != DiagDirection::Invalid && IsDiagonalTunnelPortal(tile)) {
+				/* The portal tracks of diagonal tunnels can't be entered from the side of the tunnel */
+				trackbits &= ~GetDiagonalTunnelPortalTrackBitsOnTunnelSide(tile, side);
+			}
 			break;
 
 		case RailTileType::Signals: {
@@ -4561,7 +4883,7 @@ static void GetTileDesc_Rail(TileIndex tile, TileDesc &td)
 	td.owner[0] = GetTileOwner(tile);
 	switch (GetRailTileType(tile)) {
 		case RailTileType::Normal:
-			td.str = STR_LAI_RAIL_DESCRIPTION_TRACK;
+			td.str = IsDiagonalTunnelPortal(tile) ? STR_LAI_RAIL_DESCRIPTION_DIAGONAL_TUNNEL : STR_LAI_RAIL_DESCRIPTION_TRACK;
 			break;
 
 		case RailTileType::Signals: {
@@ -4730,6 +5052,11 @@ static void ChangeTileOwner_Rail(TileIndex tile, Owner old_owner, Owner new_owne
 		Company::Get(old_owner)->infrastructure.rail[rt] -= num_pieces;
 		Company::Get(new_owner)->infrastructure.rail[rt] += num_pieces;
 
+		if (IsPlainRail(tile) && IsDiagonalTunnelPortal(tile)) {
+			AddDiagonalTunnelPortalTileInfrastructureCounts(tile, Company::Get(old_owner), -1);
+			AddDiagonalTunnelPortalTileInfrastructureCounts(tile, Company::Get(new_owner), 1);
+		}
+
 		if (HasSignals(tile)) {
 			uint num_sigs = CountBits(GetPresentSignals(tile));
 			Company::Get(old_owner)->infrastructure.signal -= num_sigs;
@@ -4789,9 +5116,48 @@ int TicksToLeaveDepot(const Train *v)
 	}
 }
 
+/**
+ * Handle a train moving on a diagonal tunnel portal tile.
+ * Trains enter the tunnel at the last position on the portal track before the tile edge leading into the tunnel.
+ * @param t The train vehicle.
+ * @param tile The portal tile.
+ * @param x The new X position of the vehicle.
+ * @param y The new Y position of the vehicle.
+ * @return Vehicle enter tile states.
+ */
+static VehicleEnterTileStates VehicleEnterTile_DiagonalTunnelPortal(Train *t, TileIndex tile, int x, int y)
+{
+	if (t->gv_flags.Test(GroundVehicleFlag::DiagonalTunnel)) return {};
+	if (TileVirtXY(x, y) != tile) return {};
+	if (!HasExactlyOneBit(t->track) || (t->track & GetTrackBits(tile)) == TRACK_BIT_NONE) return {};
+
+	const Direction dir = GetDiagonalTunnelPortalDirection(tile);
+	if (t->GetMovingDirection() != dir) return {};
+
+	/* Is the next position beyond the edge of the tile leading into the tunnel? */
+	const int dx = (dir == Direction::S || dir == Direction::W) ? 1 : -1;
+	const int dy = (dir == Direction::E || dir == Direction::S) ? 1 : -1;
+	if (TileVirtXY(x + dx, y + dy) == tile) return {};
+
+	if (t->IsMovingFront()) {
+		if (!PlayVehicleSound(t, VSE_TUNNEL) && RailVehInfo(t->engine_type)->engclass == EngineClass::Steam) {
+			SndPlayVehicleFx(SND_05_TRAIN_THROUGH_TUNNEL, t);
+		}
+	}
+
+	t->gv_flags.Set(GroundVehicleFlag::DiagonalTunnel);
+	t->vehstatus.Set(VehState::Hidden);
+	t->UpdateIsDrawn();
+	return VehicleEnterTileState::EnteredWormhole;
+}
+
 /** @copydoc VehicleEnterTileProc */
 static VehicleEnterTileStates VehicleEnterTile_Rail(Vehicle *u, TileIndex tile, int x, int y)
 {
+	if (u->type == VehicleType::Train && IsPlainRail(tile) && IsDiagonalTunnelPortal(tile)) {
+		return VehicleEnterTile_DiagonalTunnelPortal(Train::From(u), tile, x, y);
+	}
+
 	/* This routine applies only to trains in depot tiles. */
 	if (u->type != VehicleType::Train || !IsRailDepotTile(tile)) return {};
 
@@ -4947,6 +5313,9 @@ static CommandCost TerraformTile_Rail(TileIndex tile, DoCommandFlags flags, int 
 {
 	auto [tileh_old, z_old] = GetTileSlopeZ(tile);
 	if (IsPlainRail(tile)) {
+		/* The slope of diagonal tunnel portal tiles determines the tunnel direction, so must not be changed */
+		if (IsDiagonalTunnelPortal(tile)) return CommandCost(STR_ERROR_MUST_DEMOLISH_TUNNEL_FIRST);
+
 		TrackBits rail_bits = GetTrackBits(tile);
 		/* Is there flat water on the lower halftile that must be cleared expensively? */
 		bool was_water = (GetRailGroundType(tile) == RailGroundType::HalfTileWater && IsSlopeWithOneCornerRaised(tileh_old));

@@ -27,6 +27,7 @@
 		<li><a href="#date">Date: GSDate and AIDate</a></li>
 		<li><a href="#marine">Marine: GSMarine and AIMarine</a></li>
 		<li><a href="#road">Road: GSRoad and AIRoad</a></li>
+		<li><a href="#tunnel">Tunnel: GSTunnel and AITunnel</a></li>
 		<li><a href="#company">Company: GSCompany and AICompany</a></li>
 		<li><a href="#inflation">Inflation: GSInflation and AIInflation</a></li>
 		<li><a href="#asyncmode">Command Asynchronous Mode: GSAsyncMode</a></li>
@@ -111,6 +112,32 @@
 		<div class="indent">
 			<div class="code">static OneWayInfo GetOneWayInfo(TileIndex tile)</div>
 			<div class="methodtext">Get info about the one-way state of a tile.</div>
+		</div>
+	</div>
+
+	<h3 id="tunnel">Tunnel: <a href="https://docs.openttd.org/gs-api/classGSTunnel.html">GSTunnel Class</a> and <a href="https://docs.openttd.org/ai-api/classAITunnel.html">AITunnel Class</a></h3>
+	<div class="indent">
+		<h4>Additional Static Public Member Functions:</h4>
+		<div class="indent">
+			<div class="code">static bool IsDiagonalTunnelTile(TileIndex tile)</div>
+			<div class="methodtext">Check whether the tile is an entrance to one or two diagonal tunnels.</div>
+			<div class="methodtext">Diagonal tunnels are rail tunnels which run along the half tile track pieces (RAILTRACK_NW_NE, RAILTRACK_SW_SE, RAILTRACK_NW_SW and RAILTRACK_NE_SE),
+				i.e. diagonally with respect to the tile grid.</div>
+			<div class="methodtext">The entrance tile of a diagonal tunnel is a rail tile with one corner raised, each track of which is the entrance of a separate diagonal tunnel.</div>
+		</div>
+		<div class="indent">
+			<div class="code">static TileIndex GetOtherDiagonalTunnelEnd(TileIndex tile, RailTrack track)</div>
+			<div class="methodtext">Get the tile at the other end of the diagonal tunnel which has the given entrance track on the given tile.</div>
+			<div class="methodtext">Returns TILE_INVALID if there is no such tunnel.</div>
+		</div>
+		<div class="indent">
+			<div class="code">static bool BuildDiagonalTunnel(TileIndex start, RailTrack track)</div>
+			<div class="methodtext">Builds a diagonal rail tunnel, using the current rail type, starting with the given track on the start tile.</div>
+			<div class="methodtext">The start tile must have exactly one corner raised, the tunnel heads towards the raised corner.
+				The track must be one of the two half tile tracks next to the raised corner.</div>
+			<div class="methodtext">The end of the tunnel is the first half tile where the tunnel would reach the surface. If necessary, the end tile is terraformed to have
+				the opposite corner raised.</div>
+			<div class="methodtext">Diagonal tunnels are removed by removing the entrance track at either end using RemoveRailTrack.</div>
 		</div>
 	</div>
 

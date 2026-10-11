@@ -26,6 +26,8 @@
 #include "3rdparty/cpp-btree/btree_set.h"
 #include "3rdparty/cpp-btree/btree_map.h"
 
+#include "diagonal_tunnel.h"
+
 #include "safeguards.h"
 
 /** Set of tiles. */
@@ -263,6 +265,12 @@ CommandCost CmdTerraformLand(DoCommandFlags flags, TileIndex tile, Slope slope, 
 				}
 				/* Check if tunnel would take damage */
 				if (direction == -1 && IsTunnelInWay(t, z_min, ITIWF_IGNORE_CHUNNEL)) {
+					CommandCost err(STR_ERROR_EXCAVATION_WOULD_DAMAGE);
+					err.SetTile(t); // highlight the tile above the tunnel
+					return err;
+				}
+				/* Check if diagonal tunnel would take damage */
+				if (direction == -1 && IsDiagonalTunnelDamagedByTerraform(t, z_N, z_W, z_S, z_E)) {
 					CommandCost err(STR_ERROR_EXCAVATION_WOULD_DAMAGE);
 					err.SetTile(t); // highlight the tile above the tunnel
 					return err;

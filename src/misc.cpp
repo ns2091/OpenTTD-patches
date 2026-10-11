@@ -43,6 +43,7 @@
 #include "string_func.h"
 #include "plans_func.h"
 #include "session_stats.h"
+#include "diagonal_tunnel.h"
 #include "core/format.hpp"
 #include "3rdparty/monocypher/monocypher.h"
 
@@ -121,6 +122,7 @@ void InitializeGame(uint size_x, uint size_y, bool reset_date, bool reset_settin
 	AllocateMap(size_x, size_y);
 
 	ViewportMapClearTunnelCache();
+	ClearDiagonalTunnelCache();
 	ResetDisasterVehicleTargeting();
 	ClearCommandLog();
 	ClearCommandQueue();

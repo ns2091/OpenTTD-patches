@@ -151,6 +151,7 @@ enum class GroundVehicleFlag : uint8_t {
 	GoingDown              = 1, ///< Vehicle is currently going downhill. (Cached track information for acceleration)
 	SuppressImplicitOrders = 2, ///< Disable insertion and removal of automatic orders until the vehicle completes the real order.
 	Chunnel                = 3, ///< Vehicle may currently be in a chunnel. (Cached track information for inclination changes)
+	DiagonalTunnel         = 4, ///< Vehicle is inside a diagonal tunnel (trains only).
 };
 
 /** Bitset of \c GroundVehicleFlag elements. */

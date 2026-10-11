@@ -38,6 +38,8 @@
 
 #include "cheat_func.h"
 #include "command_func.h"
+#include "diagonal_tunnel.h"
+
 #include "safeguards.h"
 
 uint32_t _road_layout_change_counter = 0;
@@ -358,7 +360,7 @@ static TileIndex BuildTunnel(PathNode *current, TileIndex end_tile = INVALID_TIL
 
 			if (start_z == end_z) break;
 
-			if (!_cheats.crossing_tunnels.value && IsTunnelInWay(end_tile, start_z)) return INVALID_TILE;
+			if (!_cheats.crossing_tunnels.value && (IsTunnelInWay(end_tile, start_z) || IsDiagonalTunnelInWay(end_tile, start_z, TRACK_BIT_ALL))) return INVALID_TILE;
 		}
 
 		// No too long or super-short tunnels and always ending up on a matching upwards slope.

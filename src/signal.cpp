@@ -281,6 +281,53 @@ static bool IsTrainInWormholeTile(const TileIndex veh_tile, const TileIndex port
 }
 
 /**
+ * Is the given side of the tile the tunnel side of a diagonal tunnel portal track on the tile?
+ * @param tile Tile.
+ * @param side Side of the tile.
+ * @return true if the tile is a diagonal tunnel portal, and the tunnel of one of its portal tracks is on the given side.
+ */
+static inline bool IsDiagonalTunnelPortalTunnelSide(TileIndex tile, DiagDirection side)
+{
+	return IsDiagonalTunnelPortalTile(tile) && (GetDiagonalTunnelPortalTrackBitsOnTunnelSide(tile, side) & GetTrackBits(tile)) != TRACK_BIT_NONE;
+}
+
+/**
+ * Get the far end of the diagonal tunnel on the given side of the tile.
+ * @param tile Tile.
+ * @param side Side of the tile.
+ * @return Far end, or std::nullopt if there is no diagonal tunnel on the given side of the tile.
+ */
+static std::optional<DiagonalTunnelFarEnd> GetDiagonalTunnelFarEndOnSide(TileIndex tile, DiagDirection side)
+{
+	if (!IsDiagonalTunnelPortalTunnelSide(tile, side)) return std::nullopt;
+	const Track track = FindFirstTrack(GetDiagonalTunnelPortalTrackBitsOnTunnelSide(tile, side) & GetTrackBits(tile));
+	return GetDiagonalTunnelFarEnd(tile, GetDiagonalTunnelEntryTrackdir(tile, track));
+}
+
+/**
+ * Advance to the next tile when following a trackdir, taking into account diagonal tunnels.
+ * @param[in,out] tile Tile.
+ * @param trackdir Trackdir on the tile.
+ * @param[out] exitdir Direction of movement into the next tile.
+ * @param[out] enterdir Side of the next tile which is entered.
+ * @return true if the next tile was reached through a diagonal tunnel.
+ */
+static inline bool AdvanceTileFollowingTrackdir(TileIndex &tile, Trackdir trackdir, DiagDirection &exitdir, DiagDirection &enterdir)
+{
+	std::optional<DiagonalTunnelFarEnd> far_end = GetDiagonalTunnelFarEnd(tile, trackdir);
+	if (far_end.has_value()) {
+		tile = far_end->tile;
+		exitdir = far_end->enterdir;
+		enterdir = ReverseDiagDir(exitdir);
+		return true;
+	}
+	exitdir = TrackdirToExitdir(trackdir);
+	enterdir = ReverseDiagDir(exitdir);
+	tile += TileOffsByDiagDir(exitdir);
+	return false;
+}
+
+/**
  * Perform some operations before adding data into Todo set
  * The new and reverse direction is removed from _globset, because we are sure
  * it doesn't need to be checked again
@@ -319,6 +366,9 @@ static inline bool CheckAddToTodoSet(TileIndex t1, DiagDirection d1, TileIndex t
  */
 static inline bool MaybeAddToTodoSet(TileIndex t1, DiagDirection d1, TileIndex t2, DiagDirection d2)
 {
+	/* The tunnel side of diagonal tunnel portal tracks can't be entered from the adjacent tile */
+	if (IsValidDiagDirection(d1) && t2 == t1 + TileOffsByDiagDir(d1) && IsDiagonalTunnelPortalTunnelSide(t1, d1)) return true;
+
 	if (!CheckAddToTodoSet(t1, d1, t2, d2)) return true;
 
 	return _tbdset.Add(t1, d1);
@@ -475,6 +525,13 @@ static SigInfo ExploreSegment(Owner owner)
 					if (dir != enterdir && (tracks & _enterdir_to_trackbits[dir])) { // any accessible track?
 						TileIndex newtile = tile + TileOffsByDiagDir(dir);  // new tile to check
 						DiagDirection newdir = ReverseDiagDir(dir); // direction we are entering from
+						if (IsDiagonalTunnelPortalTunnelSide(tile, dir)) {
+							/* leaving through a diagonal tunnel */
+							std::optional<DiagonalTunnelFarEnd> far_end = GetDiagonalTunnelFarEndOnSide(tile, dir);
+							if (!far_end.has_value()) continue;
+							newtile = far_end->tile;
+							newdir = ReverseDiagDir(far_end->enterdir);
+						}
 						if (!MaybeAddToTodoSet(newtile, newdir, tile, dir)) {
 							info.flags |= SF_FULL;
 							return info;
@@ -673,6 +730,7 @@ uint8_t GetForwardAspectFollowingTrack(TileIndex tile, Trackdir trackdir)
 	DiagDirection exitdir = TrackdirToExitdir(trackdir);
 	DiagDirection enterdir = ReverseDiagDir(exitdir);
 	bool wormhole = false;
+	bool diagonal_tunnel = false;
 	if (IsTileType(tile, TileType::TunnelBridge) && TrackdirEntersTunnelBridge(tile, trackdir)) {
 		TileIndex other = GetOtherTunnelBridgeEnd(tile);
 		if (IsTunnelBridgeWithSignalSimulation(tile)) {
@@ -681,7 +739,7 @@ uint8_t GetForwardAspectFollowingTrack(TileIndex tile, Trackdir trackdir)
 		tile = other;
 		wormhole = true;
 	} else {
-		tile += TileOffsByDiagDir(exitdir);
+		diagonal_tunnel = AdvanceTileFollowingTrackdir(tile, trackdir, exitdir, enterdir);
 	}
 	while (true) {
 		switch (GetTileType(tile)) {
@@ -691,6 +749,8 @@ uint8_t GetForwardAspectFollowingTrack(TileIndex tile, Trackdir trackdir)
 				if (IsRailDepot(tile)) {
 					return 0;
 				}
+
+				if (!diagonal_tunnel && IsDiagonalTunnelPortalTunnelSide(tile, enterdir)) return 0;
 
 				TrackBits tracks = GetTrackBits(tile); // trackbits of tile
 				TrackBits tracks_masked = (TrackBits)(tracks & _enterdir_to_trackbits[enterdir]); // only incidating trackbits
@@ -720,9 +780,7 @@ uint8_t GetForwardAspectFollowingTrack(TileIndex tile, Trackdir trackdir)
 					}
 				}
 
-				exitdir = TrackdirToExitdir(trackdir);
-				enterdir = ReverseDiagDir(exitdir);
-				tile += TileOffsByDiagDir(exitdir);
+				diagonal_tunnel = AdvanceTileFollowingTrackdir(tile, trackdir, exitdir, enterdir);
 
 				break;
 			}
@@ -1100,7 +1158,13 @@ static SigSegState UpdateSignalsInBuffer(Owner owner)
 				if ((TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TransportType::Rail, 0)) & _enterdir_to_trackbits[dir]) != TRACK_BIT_NONE) {
 					/* only add to set when there is some 'interesting' track */
 					_tbdset.Add(tile, dir);
-					_tbdset.Add(tile + TileOffsByDiagDir(dir), ReverseDiagDir(dir));
+					if (IsDiagonalTunnelPortalTunnelSide(tile, dir)) {
+						/* other end of diagonal tunnel */
+						std::optional<DiagonalTunnelFarEnd> far_end = GetDiagonalTunnelFarEndOnSide(tile, dir);
+						if (far_end.has_value()) _tbdset.Add(far_end->tile, ReverseDiagDir(far_end->enterdir));
+					} else if (!IsDiagonalTunnelPortalTunnelSide(tile + TileOffsByDiagDir(dir), ReverseDiagDir(dir))) {
+						_tbdset.Add(tile + TileOffsByDiagDir(dir), ReverseDiagDir(dir));
+					}
 					break;
 				}
 				[[fallthrough]];
@@ -1109,7 +1173,8 @@ static SigSegState UpdateSignalsInBuffer(Owner owner)
 				/* jump to next tile */
 				tile = tile + TileOffsByDiagDir(dir);
 				dir = ReverseDiagDir(dir);
-				if ((TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TransportType::Rail, 0)) & _enterdir_to_trackbits[dir]) != TRACK_BIT_NONE) {
+				if ((TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TransportType::Rail, 0)) & _enterdir_to_trackbits[dir]) != TRACK_BIT_NONE &&
+						!IsDiagonalTunnelPortalTunnelSide(tile, dir)) {
 					_tbdset.Add(tile, dir);
 					break;
 				}
@@ -1407,6 +1472,7 @@ void PropagateAspectChange(TileIndex tile, Trackdir trackdir, uint8_t aspect)
 	DiagDirection exitdir = TrackdirToExitdir(ReverseTrackdir(trackdir));
 	DiagDirection enterdir = ReverseDiagDir(exitdir);
 	bool wormhole = false;
+	bool diagonal_tunnel = false;
 	if (IsTileType(tile, TileType::TunnelBridge) && TrackdirExitsTunnelBridge(tile, trackdir)) {
 		TileIndex other = GetOtherTunnelBridgeEnd(tile);
 		if (IsBridge(tile)) RefreshBridgeOnExitAspectChange(other, tile);
@@ -1414,7 +1480,7 @@ void PropagateAspectChange(TileIndex tile, Trackdir trackdir, uint8_t aspect)
 		tile = other;
 		wormhole = true;
 	} else {
-		tile += TileOffsByDiagDir(exitdir);
+		diagonal_tunnel = AdvanceTileFollowingTrackdir(tile, ReverseTrackdir(trackdir), exitdir, enterdir);
 	}
 	while (true) {
 		switch (GetTileType(tile)) {
@@ -1424,6 +1490,8 @@ void PropagateAspectChange(TileIndex tile, Trackdir trackdir, uint8_t aspect)
 				if (IsRailDepot(tile)) {
 					return;
 				}
+
+				if (!diagonal_tunnel && IsDiagonalTunnelPortalTunnelSide(tile, enterdir)) return;
 
 				TrackBits tracks = GetTrackBits(tile); // trackbits of tile
 				TrackBits tracks_masked = (TrackBits)(tracks & _enterdir_to_trackbits[enterdir]); // only incidating trackbits
@@ -1464,9 +1532,7 @@ void PropagateAspectChange(TileIndex tile, Trackdir trackdir, uint8_t aspect)
 					}
 				}
 
-				exitdir = TrackdirToExitdir(trackdir);
-				enterdir = ReverseDiagDir(exitdir);
-				tile += TileOffsByDiagDir(exitdir);
+				diagonal_tunnel = AdvanceTileFollowingTrackdir(tile, trackdir, exitdir, enterdir);
 
 				break;
 			}

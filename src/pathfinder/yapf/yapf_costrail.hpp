@@ -680,6 +680,9 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 			/* If we skipped some tunnel/bridge/station tiles, add their base cost */
 			segment_cost += YAPF_TILE_LENGTH * follower->tiles_skipped;
 
+			/* If we passed through a diagonal tunnel, add the base cost of its half tiles */
+			segment_cost += YAPF_TILE_CORNER_LENGTH * follower->diagonal_tunnel_half_tiles;
+
 			/* Slope cost. */
 			segment_cost += Yapf().SlopeCost(cur.tile, cur.td);
 
