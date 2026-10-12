@@ -15,6 +15,7 @@
 #include "../tunnelbridge_map.h"
 #include "../tunnelbridge.h"
 #include "../diagonal_tunnel.h"
+#include "../tunnelbridge_station.h"
 #include "../station_base.h"
 #include "../settings_func.h"
 #include "../strings_func.h"
@@ -152,6 +153,10 @@ void AfterLoadCompanyStats()
 					switch (GetTunnelBridgeTransportType(tile)) {
 						case TransportType::Rail:
 							AddRailTunnelBridgeInfrastructure(tile, other_end);
+							if (IsTunnelBridgeStation(tile)) {
+								c = Company::GetIfValid(GetTileOwner(tile));
+								if (c != nullptr) c->infrastructure.station += GetTunnelBridgeLength(tile, other_end);
+							}
 							break;
 
 						case TransportType::Road: {

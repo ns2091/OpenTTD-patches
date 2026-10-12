@@ -13,6 +13,7 @@
 #include "script_town.hpp"
 #include "script_cargo.hpp"
 #include "../../station_base.h"
+#include "../../tunnelbridge_station.h"
 #include "../../station_cmd.h"
 #include "../../roadstop_base.h"
 #include "../../town.h"
@@ -28,7 +29,9 @@
 
 /* static */ StationID ScriptStation::GetStationID(TileIndex tile)
 {
-	if (!::IsValidTile(tile) || !::IsTileType(tile, TileType::Station)) return StationID::Invalid();
+	if (!::IsValidTile(tile)) return StationID::Invalid();
+	if (::IsTunnelBridgeStationTile(tile)) return ::GetTunnelBridgeStationID(tile);
+	if (!::IsTileType(tile, TileType::Station)) return StationID::Invalid();
 	return ::GetStationIndex(tile);
 }
 

@@ -48,6 +48,7 @@
 #include "tile_cmd.h"
 #include "tile_track_func.h"
 #include "diagonal_tunnel.h"
+#include "tunnelbridge_station.h"
 #include "newgrf_sound.h"
 #include "engine_base.h"
 
@@ -832,6 +833,8 @@ CommandCost CmdBuildSingleRail(DoCommandFlags flags, TileIndex tile, RailType ra
 			}
 
 			if (existing == future) return CommandCost(STR_ERROR_ALREADY_BUILT);
+
+			if (IsTunnelBridgeStation(tile)) return CommandCost(STR_ERROR_NOT_POSSIBLE_ON_TUNNEL_BRIDGE_STATION);
 
 			if (IsTunnelBridgeWithSignalSimulation(tile)) {
 				if (future != TRACK_BIT_HORZ && future != TRACK_BIT_VERT) {
@@ -1766,6 +1769,7 @@ CommandCost CmdBuildSingleSignal(DoCommandFlags flags, TileIndex tile, Track tra
 		if (!ValParamTrackOrientation(track) || !IsTrackAcrossTunnelBridge(tile, track)) {
 			return CommandCost(STR_ERROR_THERE_IS_NO_RAILROAD_TRACK);
 		}
+		if (IsTunnelBridgeStation(tile)) return CommandCost(STR_ERROR_NOT_POSSIBLE_ON_TUNNEL_BRIDGE_STATION);
 		CommandCost ret = TunnelBridgeIsFree(tile, GetOtherTunnelBridgeEnd(tile), nullptr, TBIFM_ACROSS_ONLY);
 		if (ret.Failed()) return ret;
 	} else if (!ValParamTrackOrientation(track) || !IsPlainRailTile(tile) || !HasTrack(tile, track)) {

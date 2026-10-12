@@ -16,6 +16,7 @@
 #include "../../debug.h"
 #include "../../station_base.h"
 #include "../../station_cmd.h"
+#include "../../tunnelbridge_station.h"
 #include "../../landscape_cmd.h"
 #include "../../newgrf_generic.h"
 #include "../../newgrf_station.h"
@@ -172,6 +173,31 @@
 
 	bool adjacent = station_id != ScriptStation::STATION_JOIN_ADJACENT;
 	return ScriptObject::Command<Commands::BuildRailStation>::Do(tile, (::RailType)GetCurrentRailType(), direction == RAILTRACK_NW_SE ? Axis::Y : Axis::X, num_platforms, platform_length, STAT_CLASS_DFLT, 0, ScriptStation::IsValidStation(station_id) ? station_id : StationID::Invalid(), adjacent);
+}
+
+/* static */ bool ScriptRail::BuildTunnelBridgeStation(TileIndex tile, StationID station_id)
+{
+	EnforceCompanyModeValid(false);
+	EnforcePrecondition(false, ::IsValidTile(tile));
+	EnforcePrecondition(false, station_id == ScriptStation::STATION_NEW || station_id == ScriptStation::STATION_JOIN_ADJACENT || ScriptStation::IsValidStation(station_id));
+
+	bool adjacent = station_id != ScriptStation::STATION_JOIN_ADJACENT;
+	return ScriptObject::Command<Commands::BuildTunnelBridgeStation>::Do(tile, ScriptStation::IsValidStation(station_id) ? station_id : StationID::Invalid(), adjacent);
+}
+
+/* static */ bool ScriptRail::RemoveTunnelBridgeStation(TileIndex tile)
+{
+	EnforceCompanyModeValid(false);
+	EnforcePrecondition(false, ::IsValidTile(tile));
+	EnforcePrecondition(false, ::IsTunnelBridgeStationTile(tile));
+
+	return ScriptObject::Command<Commands::RemoveTunnelBridgeStation>::Do(tile);
+}
+
+/* static */ bool ScriptRail::IsTunnelBridgeStationTile(TileIndex tile)
+{
+	if (!::IsValidTile(tile)) return false;
+	return ::IsTunnelBridgeStationTile(tile);
 }
 
 /* static */ bool ScriptRail::BuildNewGRFRailStation(TileIndex tile, RailTrack direction, SQInteger num_platforms, SQInteger platform_length, StationID station_id, CargoType cargo_type, IndustryType source_industry, IndustryType goal_industry, SQInteger distance, bool source_station)

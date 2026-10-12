@@ -320,8 +320,8 @@ class NIHVehicle : public NIHelper {
 							const StationID st = static_cast<StationID>(item.data_id);
 							output.buffer.format("station: {}, {}", st, BaseStation::IsValidID(st) ? BaseStation::Get(st)->GetCachedName() : "[invalid]");
 							if (t->current_order.ShouldStopAtStation(t->last_station_visited, st, Waypoint::GetIfValid(st) != nullptr)) {
-								extern int PredictStationStoppingLocation(const Train *v, const Order *order, int station_length, DestinationID dest);
-								int stop_position = PredictStationStoppingLocation(t, &(t->current_order), item.end - item.start, st);
+								extern int PredictStationStoppingLocation(const Train *v, const Order *order, int station_length, DestinationID dest, bool tunnel_bridge_platform);
+								int stop_position = PredictStationStoppingLocation(t, &(t->current_order), item.end - item.start, st, (item.data_aux & TRLISF_TUNNEL_BRIDGE_PLATFORM) != 0);
 								output.buffer.format(", stop_position: {}", item.start + stop_position);
 								print_braking_speed(item.start + stop_position, 0, item.z_pos);
 							} else if (t->current_order.IsType(OT_GOTO_WAYPOINT) && t->current_order.GetDestination() == st && t->current_order.GetWaypointFlags().Test(OrderWaypointFlag::Reverse)) {

@@ -60,6 +60,8 @@
 #include "rail_settings.h"
 #include "road_layout_func.h"
 #include "diagonal_tunnel.h"
+#include "tunnelbridge_station.h"
+#include "station_gui.h"
 
 #include "table/strings.h"
 #include "table/bridge_land.h"
@@ -1643,7 +1645,12 @@ static CommandCost DoClearTunnel(TileIndex tile, DoCommandFlags flags)
 	Money base_cost = TunnelBridgeClearCost(tile, Price::ClearTunnel);
 	uint len = GetTunnelBridgeLength(tile, endtile) + 2; // Don't forget the end tiles.
 
+	const bool is_station = IsTunnelBridgeStation(tile);
+	const Money station_cost = is_station ? Money(_price[Price::ClearStationRail] * GetTunnelBridgeStationPlatformLength(tile)) : Money(0);
+
 	if (flags.Test(DoCommandFlag::Execute)) {
+		if (is_station) DoRemoveTunnelBridgeStation(tile);
+
 		if (GetTunnelBridgeTransportType(tile) == TransportType::Rail) {
 			/* We first need to request values before calling DoClearSquare */
 			DiagDirection dir = GetTunnelBridgeDirection(tile);
@@ -1709,7 +1716,7 @@ static CommandCost DoClearTunnel(TileIndex tile, DoCommandFlags flags)
 		ViewportMapInvalidateTunnelCacheByTile(tile < endtile ? tile : endtile, axis);
 	}
 
-	return CommandCost(ExpensesType::Construction, len * base_cost * (is_chunnel ? 2 : 1));
+	return CommandCost(ExpensesType::Construction, len * base_cost * (is_chunnel ? 2 : 1) + station_cost);
 }
 
 
@@ -1776,7 +1783,12 @@ static CommandCost DoClearBridge(TileIndex tile, DoCommandFlags flags)
 
 	cost.AddCost(len * base_cost);
 
+	const bool is_station = IsTunnelBridgeStation(tile);
+	if (is_station) cost.AddCost(_price[Price::ClearStationRail] * middle_len);
+
 	if (flags.Test(DoCommandFlag::Execute)) {
+		if (is_station) DoRemoveTunnelBridgeStation(tile);
+
 		/* read this value before actual removal of bridge */
 		Owner owner = GetTileOwner(tile);
 		int height = GetBridgeHeight(tile);
@@ -2914,6 +2926,64 @@ BridgePieceDebugInfo GetBridgePieceDebugInfo(TileIndex tile)
  * Draw the middle bits of a bridge.
  * @param ti Tile information of the tile to draw it on.
  */
+/**
+ * Draw the middle part of a rail bridge which is a station platform.
+ * The bridge floor and railings are replaced by a flat deck with platforms.
+ * @param ti The tile info of the tile under the bridge.
+ * @param rampsouth The southern ramp of the bridge.
+ * @param rampnorth The northern ramp of the bridge.
+ * @param axis The axis of the bridge.
+ * @param psid The bridge sprites of this bridge piece.
+ * @param drawfarpillar Whether to draw the far pillar.
+ * @param x The x position of the tile.
+ * @param y The y position of the tile.
+ * @param z The z position of the bridge sprites.
+ * @param bridge_z The z position of the bridge deck.
+ */
+static void DrawBridgeStationMiddle(const TileInfo *ti, TileIndex rampsouth, TileIndex rampnorth, Axis axis, const PalSpriteID *psid, bool drawfarpillar, int x, int y, int z, uint bridge_z)
+{
+	const RailTypeInfo *rti = GetRailTypeInfo(GetRailType(rampsouth));
+	const bool transparent = IsTransparencySet(TransparencyOption::Bridges);
+
+	if (!IsInvisibilitySet(TransparencyOption::Bridges)) {
+		/* Flat deck with track */
+		StartSpriteCombine();
+		SpriteID surface = rti->UsesOverlay() ? GetCustomRailSprite(rti, rampsouth, RailSpriteType::Bridge, TileContext::OnBridge) : rti->base_sprites.bridge_deck;
+		if (surface == 0) surface = SPR_BRIDGE_DECKS_RAIL;
+		AddSortableSpriteToDraw(surface + to_underlying(axis), PAL_NONE, x, y, bridge_z, {{}, {TILE_SIZE, TILE_SIZE, 0}, {}}, transparent);
+
+		if (_game_mode != GameMode::Menu && _settings_client.gui.show_track_reservation && (HasAcrossBridgeReservation(rampnorth) || HasAcrossBridgeReservation(rampsouth))) {
+			if (rti->UsesOverlay()) {
+				SpriteID overlay = GetCustomRailSprite(rti, rampnorth, RailSpriteType::Overlay, TileContext::OnBridge);
+				AddSortableSpriteToDraw(overlay + RTO_X + to_underlying(axis), PALETTE_CRASH, x, y, bridge_z, {{}, {TILE_SIZE, TILE_SIZE, 0}, {}}, transparent);
+			} else {
+				AddSortableSpriteToDraw(axis == Axis::X ? rti->base_sprites.single_x : rti->base_sprites.single_y, PALETTE_CRASH, x, y, bridge_z, {{}, {TILE_SIZE, TILE_SIZE, 0}, {}}, transparent);
+			}
+		}
+		EndSpriteCombine();
+
+		/* Default station platform sprites, at the height of the bridge deck */
+		TileInfo platform_ti = *ti;
+		platform_ti.z = bridge_z;
+		const DrawTileSprites *dts = GetStationTileLayout(StationType::Rail, axis == Axis::X ? 0 : 1);
+		DrawRailTileSeq(&platform_ti, dts, TransparencyOption::Bridges, 0, 0, GetCompanyPalette(GetTileOwner(rampsouth)));
+	}
+
+	if (HasRailCatenaryDrawn(GetRailType(rampsouth))) {
+		DrawRailCatenaryOnBridge(ti);
+	}
+
+	/* Do not draw anything more if bridges are invisible */
+	if (IsInvisibilitySet(TransparencyOption::Bridges)) return;
+
+	if (axis == Axis::X) {
+		y += 12;
+	} else {
+		x += 12;
+	}
+	DrawBridgePillars(psid[2], ti, axis, drawfarpillar, x, y, z);
+}
+
 void DrawBridgeMiddle(const TileInfo *ti)
 {
 	/* Sectional view of bridge bounding boxes:
@@ -2980,6 +3050,11 @@ void DrawBridgeMiddle(const TileInfo *ti)
 		special_flags = VSSSF_SORT_SPECIAL | VSSSF_SORT_SORT_BRIDGE_BB;
 	}
 	AddSortableSpriteToDraw(SPR_EMPTY_BOUNDING_BOX, PAL_NONE, x, y, bridge_z - TILE_HEIGHT + BB_Z_SEPARATOR, {{}, {TILE_SIZE, TILE_SIZE, 1}, {}}, false, nullptr, special_flags);
+
+	if (transport_type == TransportType::Rail && IsTunnelBridgeStation(rampsouth)) {
+		DrawBridgeStationMiddle(ti, rampsouth, rampnorth, axis, psid, drawfarpillar, x, y, z, bridge_z);
+		return;
+	}
 
 	/* Draw Trambits as SpriteCombine */
 	if (transport_type == TransportType::Road || transport_type == TransportType::Rail) StartSpriteCombine();
@@ -3106,6 +3181,11 @@ static void GetTileDesc_TunnelBridge(TileIndex tile, TileDesc &td)
 		}
 	} else { // IsBridge(tile)
 		td.str = (tt == TransportType::Water) ? STR_LAI_BRIDGE_DESCRIPTION_AQUEDUCT : IsTunnelBridgeWithSignalSimulation(tile) ? STR_LAI_BRIDGE_DESCRIPTION_RAILROAD_SIGNAL : GetBridgeSpec(GetBridgeType(tile))->transport_name[to_underlying(tt)];
+	}
+
+	if (IsTunnelBridgeStation(tile)) {
+		td.str = IsTunnel(tile) ? STR_LAI_TUNNEL_DESCRIPTION_RAILROAD_STATION : STR_LAI_BRIDGE_DESCRIPTION_RAILROAD_STATION;
+		td.dparam[0] = GetTunnelBridgeStationID(tile).base();
 	}
 
 	if (tt == TransportType::Rail) {
@@ -3327,6 +3407,11 @@ static void TileLoop_TunnelBridge(TileIndex tile)
 /** @copydoc ClickTileProc */
 static bool ClickTile_TunnelBridge(TileIndex tile)
 {
+	if (!_ctrl_pressed && IsTunnelBridgeStationTile(tile)) {
+		ShowStationViewWindow(GetTunnelBridgeStationID(tile));
+		return true;
+	}
+
 	if (_ctrl_pressed && IsTunnelBridgeWithSignalSimulation(tile)) {
 		TrackBits trackbits = TrackdirBitsToTrackBits(GetTileTrackdirBits(tile, TransportType::Rail, 0));
 
@@ -3542,6 +3627,11 @@ static void ChangeTileOwner_TunnelBridge(TileIndex tile, Owner old_owner, Owner 
 		/* Only execute this for one of the two ends */
 		SubtractRailTunnelBridgeInfrastructure(old, tile, other_end);
 		if (new_owner != INVALID_OWNER) AddRailTunnelBridgeInfrastructure(Company::Get(new_owner), tile, other_end);
+		if (IsTunnelBridgeStation(tile) && new_owner != INVALID_OWNER) {
+			const uint length = GetTunnelBridgeStationPlatformLength(tile);
+			old->infrastructure.station -= length;
+			Company::Get(new_owner)->infrastructure.station += length;
+		}
 	}
 	if (tt == TransportType::Water) {
 		/* Set number of pieces to zero if it's the southern tile as we

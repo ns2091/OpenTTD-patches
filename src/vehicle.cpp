@@ -32,6 +32,7 @@
 #include "autoreplace_func.h"
 #include "autoreplace_gui.h"
 #include "station_base.h"
+#include "tunnelbridge_station.h"
 #include "ai/ai.hpp"
 #include "depot_func.h"
 #include "network/network.h"
@@ -3409,8 +3410,8 @@ void Vehicle::BeginLoading()
 {
 	if (this->type == VehicleType::Train) {
 #ifdef WITH_ASSERT
-		[[maybe_unused]] TileIndex station_tile = Train::From(this)->GetStationLoadingVehicle()->tile;
-		assert_tile(IsTileType(station_tile, TileType::Station), station_tile);
+		[[maybe_unused]] const Train *station_vehicle = Train::From(this)->GetStationLoadingVehicle();
+		assert_tile(IsTileType(station_vehicle->tile, TileType::Station) || IsTrainOnTunnelBridgeStationPlatform(station_vehicle), station_vehicle->tile);
 #endif
 	} else {
 		assert_tile(IsTileType(this->tile, TileType::Station) || this->type == VehicleType::Ship, this->tile);
@@ -4346,6 +4347,8 @@ void Vehicle::ShowVisualEffect(uint max_speed) const
 		if (t->flags.Test(VehicleRailFlag::Reversing) ||
 				t->cur_speed > max_speed ||
 				(HasStationTileRail(front_tile) && t->IsFrontEngine() && t->current_order.ShouldStopAtStation(t, GetStationIndex(front_tile), IsRailWaypoint(front_tile)) &&
+				t->cur_speed >= max_speed) ||
+				(IsTrainOnTunnelBridgeStationPlatform(moving_front) && t->IsFrontEngine() && t->current_order.ShouldStopAtStation(t, GetTunnelBridgeStationID(front_tile), false) &&
 				t->cur_speed >= max_speed) ||
 				(t->reverse_distance >= 1 && (int)t->cur_speed >= ReversingDistanceTargetSpeed(t))) {
 			return;

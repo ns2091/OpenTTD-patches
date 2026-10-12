@@ -281,6 +281,45 @@ public:
 	static bool BuildRailStation(TileIndex tile, RailTrack direction, SQInteger num_platforms, SQInteger platform_length, StationID station_id);
 
 	/**
+	 * Make the middle part of a rail tunnel or bridge into a station platform.
+	 * Trains stop and load/unload inside the tunnel or bridge.
+	 * @param tile One of the end tiles of the rail tunnel or bridge.
+	 * @param station_id The station to join, ScriptStation::STATION_NEW or ScriptStation::STATION_JOIN_ADJACENT.
+	 * @pre ScriptMap::IsValidTile(tile).
+	 * @pre station_id == ScriptStation::STATION_NEW || station_id == ScriptStation::STATION_JOIN_ADJACENT || ScriptStation::IsValidStation(station_id).
+	 * @game @pre ScriptCompanyMode::IsValid().
+	 * @exception ScriptError::ERR_OWNED_BY_ANOTHER_COMPANY
+	 * @exception ScriptError::ERR_VEHICLE_IN_THE_WAY
+	 * @exception ScriptError::ERR_STATION_TOO_SPREAD_OUT
+	 * @exception ScriptStation::ERR_STATION_TOO_CLOSE_TO_ANOTHER_STATION
+	 * @exception ScriptStation::ERR_STATION_TOO_MANY_STATIONS
+	 * @exception ScriptStation::ERR_STATION_TOO_MANY_STATIONS_IN_TOWN
+	 * @return Whether the station platform has been/can be build or not.
+	 * @note This is a non-standard addition to the script API.
+	 */
+	static bool BuildTunnelBridgeStation(TileIndex tile, StationID station_id);
+
+	/**
+	 * Remove the station platform from a rail tunnel or bridge.
+	 * @param tile One of the end tiles of the rail tunnel or bridge.
+	 * @pre IsTunnelBridgeStationTile(tile).
+	 * @game @pre ScriptCompanyMode::IsValid().
+	 * @exception ScriptError::ERR_VEHICLE_IN_THE_WAY
+	 * @return Whether the station platform has been/can be removed or not.
+	 * @note This is a non-standard addition to the script API.
+	 */
+	static bool RemoveTunnelBridgeStation(TileIndex tile);
+
+	/**
+	 * Check whether the tile is an end tile of a rail tunnel or bridge whose middle part is a station platform.
+	 * @param tile The tile to check.
+	 * @pre ScriptMap::IsValidTile(tile).
+	 * @return True if and only if the tile is an end tile of a rail tunnel or bridge with a station platform.
+	 * @note This is a non-standard addition to the script API.
+	 */
+	static bool IsTunnelBridgeStationTile(TileIndex tile);
+
+	/**
 	 * Build a NewGRF rail station. This calls callback 18 to let a NewGRF
 	 *  provide the station class / id to build, so we don't end up with
 	 *  only the default stations on the map.

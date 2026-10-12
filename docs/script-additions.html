@@ -28,6 +28,7 @@
 		<li><a href="#marine">Marine: GSMarine and AIMarine</a></li>
 		<li><a href="#road">Road: GSRoad and AIRoad</a></li>
 		<li><a href="#tunnel">Tunnel: GSTunnel and AITunnel</a></li>
+		<li><a href="#rail">Rail: GSRail and AIRail</a></li>
 		<li><a href="#company">Company: GSCompany and AICompany</a></li>
 		<li><a href="#inflation">Inflation: GSInflation and AIInflation</a></li>
 		<li><a href="#asyncmode">Command Asynchronous Mode: GSAsyncMode</a></li>
@@ -138,6 +139,26 @@
 			<div class="methodtext">The end of the tunnel is the first half tile where the tunnel would reach the surface. If necessary, the end tile is terraformed to have
 				the opposite corner raised.</div>
 			<div class="methodtext">Diagonal tunnels are removed by removing the entrance track at either end using RemoveRailTrack.</div>
+		</div>
+	</div>
+
+	<h3 id="rail">Rail: <a href="https://docs.openttd.org/gs-api/classGSRail.html">GSRail Class</a> and <a href="https://docs.openttd.org/ai-api/classAIRail.html">AIRail Class</a></h3>
+	<div class="indent">
+		<h4>Additional Static Public Member Functions:</h4>
+		<div class="indent">
+			<div class="code">static bool BuildTunnelBridgeStation(TileIndex tile, StationID station_id)</div>
+			<div class="methodtext">Make the middle part of a rail tunnel or bridge into a station platform. Trains stop and load/unload inside the tunnel or bridge.</div>
+			<div class="methodtext">tile is one of the end tiles of the tunnel or bridge. station_id is the station to join, STATION_NEW or STATION_JOIN_ADJACENT.</div>
+			<div class="methodtext">The tunnel or bridge must have at least one middle tile, must not have signals, must not be a tunnel under water or a bridge with custom bridge heads, and must not be in use by a train.</div>
+		</div>
+		<div class="indent">
+			<div class="code">static bool RemoveTunnelBridgeStation(TileIndex tile)</div>
+			<div class="methodtext">Remove the station platform from a rail tunnel or bridge.</div>
+		</div>
+		<div class="indent">
+			<div class="code">static bool IsTunnelBridgeStationTile(TileIndex tile)</div>
+			<div class="methodtext">Check whether the tile is an end tile of a rail tunnel or bridge whose middle part is a station platform.</div>
+			<div class="methodtext">GetStationID of the Station class and orders accept such end tiles as the location of the station.</div>
 		</div>
 	</div>
 

@@ -18,6 +18,7 @@
 #include "../../depot_base.h"
 #include "../../order_cmd.h"
 #include "../../station_base.h"
+#include "../../tunnelbridge_station.h"
 #include "../../waypoint_base.h"
 #include "../../settings_type.h"
 
@@ -43,6 +44,9 @@ static OrderType GetOrderTypeByTile(TileIndex t)
 		case TileType::Road:    if (::GetRoadTileType(t) == RoadTileType::Depot) return OT_GOTO_DEPOT; break;
 		case TileType::Railway:
 			if (IsRailDepot(t)) return OT_GOTO_DEPOT;
+			break;
+		case TileType::TunnelBridge:
+			if (IsTunnelBridgeStation(t)) return OT_GOTO_STATION;
 			break;
 	}
 
@@ -521,7 +525,7 @@ static ScriptOrder::OrderPosition RealOrderPositionToScriptOrderPosition(Vehicle
 		}
 
 		case OT_GOTO_STATION:
-			order.MakeGoToStation(::GetStationIndex(destination));
+			order.MakeGoToStation(::IsTunnelBridgeStationTile(destination) ? ::GetTunnelBridgeStationID(destination) : ::GetStationIndex(destination));
 			order.SetLoadType(static_cast<OrderLoadType>(GB(order_flags, 5, 3)));
 			order.SetUnloadType(static_cast<OrderUnloadType>(GB(order_flags, 2, 3)));
 			order.SetStopLocation(OrderStopLocation::FarEnd);

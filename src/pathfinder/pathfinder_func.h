@@ -12,6 +12,7 @@
 
 #include "../tile_track_func.h"
 #include "../waypoint_base.h"
+#include "../tunnelbridge_station.h"
 
 /**
  * Calculates the tile of given station that is closest to a given tile
@@ -26,6 +27,7 @@ inline TileIndex CalcClosestStationTile(StationID station, TileIndex tile, Stati
 {
 	const BaseStation *st = BaseStation::Get(station);
 	TileArea ta = st->GetTileArea(station_type);
+	if (station_type == StationType::Rail) ta = GetRailStationAreaIncludingTunnelBridgePlatforms(st, ta);
 
 	/* If the rail station is (temporarily) not present, use the station sign to drive near the station */
 	if (ta.tile == INVALID_TILE) return st->xy;

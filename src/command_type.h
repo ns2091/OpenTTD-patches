@@ -508,6 +508,8 @@ enum class Commands : uint8_t {
 	BuildDiagonalTunnel,                    ///< build a diagonal rail tunnel
 
 	RemoveFromRailStation,                  ///< remove a (rectangle of) tiles from a rail station
+	BuildTunnelBridgeStation,               ///< make a rail tunnel or bridge into a station platform
+	RemoveTunnelBridgeStation,              ///< remove the station platform from a rail tunnel or bridge
 	ConvertRail,                            ///< convert a rail type
 	ConvertRailTrack,                       ///< convert a rail type (track)
 

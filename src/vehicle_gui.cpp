@@ -40,6 +40,7 @@
 #include "company_base.h"
 #include "engine_func.h"
 #include "station_base.h"
+#include "tunnelbridge_station.h"
 #include "infrastructure_func.h"
 #include "tilehighlight_func.h"
 #include "train.h"
@@ -2787,11 +2788,11 @@ public:
 			return;
 		}
 
-		if (IsTileType(tile, TileType::Station)) {
+		if (IsTileType(tile, TileType::Station) || IsTunnelBridgeStationTile(tile)) {
 			if (this->vli.type != VehicleListType::Station) return;
 			if (BaseStation::Get(this->vli.index)->facilities.Test(StationFacility::Waypoint)) return;
 
-			StationID st_index = GetStationIndex(tile);
+			StationID st_index = IsTunnelBridgeStationTile(tile) ? GetTunnelBridgeStationID(tile) : GetStationIndex(tile);
 			const Station *st = Station::Get(st_index);
 
 			if (!IsInfraUsageAllowed(this->vli.vtype, this->vli.company, st->owner)) return;

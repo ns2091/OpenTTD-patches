@@ -17,6 +17,7 @@
 #include "newgrf_newsignals.h"
 #include "train_speed_adaptation.h"
 #include "bridge_signal_map.h"
+#include "tunnelbridge_station.h"
 
 #include "table/strings.h"
 
@@ -580,6 +581,10 @@ static PBSTileInfo FollowReservation(Owner o, RailTypes rts, TileIndex tile, Tra
 				lookahead->AddStation(1 + ft.tiles_skipped, GetStationIndex(ft.new_tile), z);
 			} else {
 				check_rail_type(tile, trackdir, 0);
+			}
+			if ((ft.is_tunnel || ft.is_bridge) && IsTunnelBridgeStationTile(tile)) {
+				/* Station platform inside the tunnel/bridge which has just been passed through */
+				lookahead->AddStation(ft.tiles_skipped, GetTunnelBridgeStationID(tile), IsBridge(tile) ? GetBridgeHeight(tile) : z, TRLISF_TUNNEL_BRIDGE_PLATFORM);
 			}
 			check_direction(TrackdirToDirection(trackdir), (ft.tiles_skipped * TILE_SIZE) + (ft.diagonal_tunnel_half_tiles * (TILE_SIZE / 2)), tile);
 			if (IsTileType(tile, TileType::TunnelBridge) && TrackdirEntersTunnelBridge(tile, trackdir)) {

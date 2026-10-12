@@ -52,6 +52,7 @@
 #include "station_map.h"
 #include "tunnelbridge_map.h"
 #include "diagonal_tunnel.h"
+#include "tunnelbridge_station.h"
 
 #include "widgets/rail_widget.h"
 
@@ -223,8 +224,39 @@ void CcStation(const CommandCost &result, TileIndex tile)
  * Place a rail station.
  * @param tile Position to place or start dragging a station.
  */
+/**
+ * Make a rail tunnel or bridge into a station platform, or remove the station platform from it.
+ * @param tile The clicked tile.
+ * @return true if the tile is an end tile of a rail tunnel or bridge, and has been handled.
+ */
+static bool PlaceRail_TunnelBridgeStation(TileIndex tile)
+{
+	if (!IsTileType(tile, TileType::TunnelBridge) || GetTunnelBridgeTransportType(tile) != TransportType::Rail) return false;
+
+	if (_remove_button_clicked) {
+		if (!IsTunnelBridgeStation(tile)) return false;
+		Command<Commands::RemoveTunnelBridgeStation>::Post(STR_ERROR_CAN_T_REMOVE_PART_OF_STATION, CommandCallback::PlaySound_CONSTRUCTION_RAIL, tile);
+		return true;
+	}
+
+	bool adjacent = _ctrl_pressed;
+	auto proc = [=](bool test, StationID to_join) -> bool {
+		if (test) {
+			return Command<Commands::BuildTunnelBridgeStation>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::BuildTunnelBridgeStation>()), tile, StationID::Invalid(), adjacent).Succeeded();
+		} else {
+			return Command<Commands::BuildTunnelBridgeStation>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_STATION, CommandCallback::Station, tile, to_join, adjacent);
+		}
+	};
+
+	ShowSelectStationIfNeeded(GetTunnelBridgeStationArea(tile), proc);
+	return true;
+}
+
 static void PlaceRail_Station(TileIndex tile)
 {
+	/* Clicking on the end of a rail tunnel or bridge makes it into a station platform */
+	if (PlaceRail_TunnelBridgeStation(tile)) return;
+
 	if (_remove_button_clicked) {
 		VpStartPlaceSizing(tile, VPM_X_AND_Y_LIMITED, DDSP_REMOVE_STATION);
 		VpSetPlaceSizingLimit(-1);

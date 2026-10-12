@@ -202,3 +202,11 @@ STR_ERROR_SITE_UNSUITABLE_FOR_DIAGONAL_TUNNEL                   :{WHITE}斜面�
 STR_ERROR_DIAGONAL_TUNNEL_EMERGES                               :{WHITE}適切な出口に達する前にトンネルが地上に出てしまいます
 STR_ERROR_NOT_POSSIBLE_ON_DIAGONAL_TUNNEL_PORTAL                :{WHITE}斜めトンネルの入り口では実行できません
 STR_LAI_RAIL_DESCRIPTION_DIAGONAL_TUNNEL                        :鉄道トンネル(斜め)
+STR_ERROR_TUNNEL_BRIDGE_STATION_NOT_RAIL_TUNNEL_BRIDGE         :{WHITE}鉄道トンネルか鉄道橋である必要があります
+STR_ERROR_TUNNEL_BRIDGE_STATION_TOO_SHORT                       :{WHITE}トンネル/橋が短すぎてホームを設置できません
+STR_ERROR_TUNNEL_BRIDGE_STATION_CHUNNEL                         :{WHITE}海底トンネルには設置できません
+STR_ERROR_TUNNEL_BRIDGE_STATION_CUSTOM_BRIDGE_HEAD              :{WHITE}カスタム橋頭のある橋には設置できません
+STR_ERROR_TUNNEL_BRIDGE_STATION_RESERVED                        :{WHITE}列車がトンネル/橋を通る経路を予約しています
+STR_ERROR_NOT_POSSIBLE_ON_TUNNEL_BRIDGE_STATION                 :{WHITE}駅ホームのあるトンネル/橋では実行できません
+STR_LAI_TUNNEL_DESCRIPTION_RAILROAD_STATION                     :鉄道トンネル({STATION}のホーム)
+STR_LAI_BRIDGE_DESCRIPTION_RAILROAD_STATION                     :鉄道橋({STATION}のホーム)

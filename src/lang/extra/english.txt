@@ -1332,6 +1332,8 @@ STR_LAI_TUNNEL_DESCRIPTION_RAILROAD_SIGNAL                      :Railway tunnel 
 STR_LAI_TUNNEL_DESCRIPTION_RAILROAD_SIGNAL_CHUNNEL              :Railway tunnel with signal simulation (underwater)
 STR_LAI_TUNNEL_DESCRIPTION_ROAD_CHUNNEL                         :Road tunnel (underwater)
 STR_LAI_RAIL_DESCRIPTION_DIAGONAL_TUNNEL                        :Railway tunnel (diagonal)
+STR_LAI_TUNNEL_DESCRIPTION_RAILROAD_STATION                     :Railway tunnel with platform of {STATION}
+STR_LAI_BRIDGE_DESCRIPTION_RAILROAD_STATION                     :Railway bridge with platform of {STATION}
 STR_LAI_BRIDGE_DESCRIPTION_RAILROAD_SIGNAL                      :Railway bridge with signal simulation
 
 STR_SAVELOAD_UNKNOWN_ID                                         :{YELLOW}This file may be from a different game.
@@ -2101,6 +2103,12 @@ STR_ERROR_CHUNNEL_ONLY_OVER_SEA                                 :{WHITE}Underwat
 STR_ERROR_SITE_UNSUITABLE_FOR_DIAGONAL_TUNNEL                   :{WHITE}... site unsuitable for diagonal tunnel entrance
 STR_ERROR_DIAGONAL_TUNNEL_EMERGES                               :{WHITE}... tunnel would emerge from the ground before reaching a suitable exit
 STR_ERROR_NOT_POSSIBLE_ON_DIAGONAL_TUNNEL_PORTAL                :{WHITE}... not possible on a diagonal tunnel entrance
+STR_ERROR_TUNNEL_BRIDGE_STATION_NOT_RAIL_TUNNEL_BRIDGE         :{WHITE}... must be a railway tunnel or bridge
+STR_ERROR_TUNNEL_BRIDGE_STATION_TOO_SHORT                       :{WHITE}... tunnel or bridge too short for a platform
+STR_ERROR_TUNNEL_BRIDGE_STATION_CHUNNEL                         :{WHITE}... not possible in a tunnel under water
+STR_ERROR_TUNNEL_BRIDGE_STATION_CUSTOM_BRIDGE_HEAD              :{WHITE}... not possible on a bridge with a custom bridge head
+STR_ERROR_TUNNEL_BRIDGE_STATION_RESERVED                        :{WHITE}... a train has reserved a path through the tunnel or bridge
+STR_ERROR_NOT_POSSIBLE_ON_TUNNEL_BRIDGE_STATION                 :{WHITE}... not possible on a tunnel or bridge with a station platform
 STR_ERROR_PURCHASE_LAND_LIMIT_REACHED                           :{WHITE}... land area purchasing limit reached
 STR_ERROR_CANT_PURCHASE_OTHER_COMPANY_DEPOT                     :{WHITE}Depot is owned by another company, and building vehicles there is not allowed.
 STR_ERROR_DEPOT_HAS_WRONG_RAIL_TYPE                             :{WHITE}Depot cannot be used to build trains with this rail type.

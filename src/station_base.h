@@ -914,6 +914,7 @@ public:
 
 	BitmapTileArea catchment_tiles{};       ///< NOSAVE: Set of individual tiles covered by catchment area
 	uint station_tiles = 0;                 ///< NOSAVE: Count of station tiles owned by this station
+	std::vector<TileIndex> tunnel_bridge_platforms{}; ///< NOSAVE: Northern end tiles of the tunnels/bridges which are platforms of this station, see tunnelbridge_station.h
 
 	StationVehicleTypes had_vehicle_of_type{};
 

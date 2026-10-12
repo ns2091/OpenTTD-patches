@@ -54,6 +54,7 @@
 #include "script/api/script_event_types.hpp"
 #include "3rdparty/cpp-btree/btree_map.h"
 #include "diagonal_tunnel.h"
+#include "tunnelbridge_station.h"
 
 #include "widgets/vehicle_widget.h"
 
@@ -548,10 +549,16 @@ int GetTileMarginInFrontOfTrain(const Train *v, int x_pos, int y_pos)
  * @param station_length 'return' the station length in 1/16th tiles
  * @return the location, calculated from the begin of the station to stop at.
  */
+VehicleEnterTileStates TrainCheckStationStopLocation(Train *t, TileIndex tile, StationID station_id, bool is_waypoint, int x, int y);
+
 int GetTrainStopLocation(StationID station_id, TileIndex tile, Train *v, bool update_train_state, int *station_ahead, int *station_length)
 {
 	Train *front = v->First();
-	if (IsRailWaypoint(tile)) {
+	const bool tunnel_bridge_platform = IsTileType(tile, TileType::TunnelBridge);
+	if (tunnel_bridge_platform) {
+		/* Platform inside a tunnel or bridge */
+		GetTunnelBridgeStationPlatformPosition(v, station_ahead, station_length);
+	} else if (IsRailWaypoint(tile)) {
 		*station_ahead = *station_length = TILE_SIZE;
 	} else {
 		const Station *st = Station::Get(station_id);
@@ -569,6 +576,8 @@ int GetTrainStopLocation(StationID station_id, TileIndex tile, Train *v, bool up
 	} else if (front->current_order.IsType(OT_GOTO_WAYPOINT) && front->current_order.GetDestination() == station_id) {
 		osl = OrderStopLocation::FarEnd;
 	}
+	/* Through loading is not supported for platforms inside tunnels and bridges */
+	if (tunnel_bridge_platform && osl == OrderStopLocation::Through) osl = OrderStopLocation::FarEnd;
 	int overhang = front->gcache.cached_total_length - *station_length;
 	int adjust = 0;
 	if (osl == OrderStopLocation::Through && overhang > 0) {
@@ -803,7 +812,7 @@ void AdvanceOrderIndex(const Vehicle *v, VehicleOrderID &index)
 	if (index >= v->GetNumOrders()) index = 0;
 }
 
-int PredictStationStoppingLocation(const Train *v, const Order *order, int station_length, DestinationID dest)
+int PredictStationStoppingLocation(const Train *v, const Order *order, int station_length, DestinationID dest, bool tunnel_bridge_platform)
 {
 	/* Default to the middle of the station for stations stops that are not in
 	 * the order list like intermediate stations when non-stop is disabled */
@@ -815,6 +824,8 @@ int PredictStationStoppingLocation(const Train *v, const Order *order, int stati
 	} else if (order->IsType(OT_GOTO_WAYPOINT) && order->GetDestination() == dest) {
 		osl = OrderStopLocation::FarEnd;
 	}
+	/* Through loading is not supported for platforms inside tunnels and bridges */
+	if (tunnel_bridge_platform && osl == OrderStopLocation::Through) osl = OrderStopLocation::FarEnd;
 
 	int overhang = v->gcache.cached_total_length - station_length;
 	int adjust = 0;
@@ -1020,7 +1031,7 @@ static void ApplyLookAheadItem(const Train *v, const TrainReservationLookAheadIt
 		case TRLIT_STATION: {
 			const StationID st = static_cast<StationID>(item.data_id);
 			if (order->ShouldStopAtStation(last_station_visited, st, Waypoint::GetIfValid(st) != nullptr)) {
-				limit_advisory_speed(item.start + PredictStationStoppingLocation(v, order, item.end - item.start, st), 0, item.z_pos);
+				limit_advisory_speed(item.start + PredictStationStoppingLocation(v, order, item.end - item.start, st, (item.data_aux & TRLISF_TUNNEL_BRIDGE_PLATFORM) != 0), 0, item.z_pos);
 				last_station_visited = st;
 			} else if (order->IsType(OT_GOTO_WAYPOINT) && order->GetDestination() == st && order->GetWaypointFlags().Test(OrderWaypointFlag::Reverse)) {
 				limit_advisory_speed(item.start + v->gcache.cached_total_length, 0, item.z_pos);
@@ -1140,9 +1151,16 @@ Train::MaxSpeedInfo Train::GetCurrentMaxSpeedInfoInternal(bool update_state) con
 	if (_settings_game.vehicle.train_acceleration_model == AccelerationModel::Realistic && this->lookahead == nullptr) {
 		Train *v_platform = const_cast<Train *>(this->GetStationLoadingVehicle());
 		TileIndex platform_tile = v_platform->tile;
+		StationID sid = StationID::Invalid();
+		bool is_waypoint = false;
 		if (HasStationTileRail(platform_tile)) {
-			StationID sid = GetStationIndex(platform_tile);
-			if (this->current_order.ShouldStopAtStation(this, sid, IsRailWaypoint(platform_tile))) {
+			sid = GetStationIndex(platform_tile);
+			is_waypoint = IsRailWaypoint(platform_tile);
+		} else if (IsTrainOnTunnelBridgeStationPlatform(v_platform)) {
+			sid = GetTunnelBridgeStationID(platform_tile);
+		}
+		if (sid != StationID::Invalid()) {
+			if (this->current_order.ShouldStopAtStation(this, sid, is_waypoint)) {
 				int station_ahead;
 				int station_length;
 				int stop_at = GetTrainStopLocation(sid, platform_tile, v_platform, update_state, &station_ahead, &station_length);
@@ -3068,8 +3086,8 @@ static void ReverseTrainDirection(Train *consist)
 		}
 	} else if (consist->current_order.IsAnyLoadingType()) {
 		/* Not a station || different station --> leave the station */
-		if (!IsTileType(moving_back->tile, TileType::Station) || !IsTileType(moving_front->tile, TileType::Station) ||
-				GetStationIndex(moving_back->tile) != GetStationIndex(moving_front->tile) ||
+		const StationID front_station = GetTrainVehicleStationID(moving_front);
+		if (front_station == StationID::Invalid() || GetTrainVehicleStationID(moving_back) != front_station ||
 				moving_front->flags.Test(VehicleRailFlag::BeyondPlatformEnd)) {
 			consist->LeaveStation();
 		}
@@ -3324,8 +3342,8 @@ CommandCost CmdReverseTrainDirection(DoCommandFlags flags, VehicleID veh_id, boo
 				const Train *moving_back = v->GetMovingBack();
 
 				/* not a station || different station --> leave the station */
-				if (!IsTileType(moving_back->tile, TileType::Station) || !IsTileType(moving_front->tile, TileType::Station) ||
-						GetStationIndex(moving_back->tile) != GetStationIndex(moving_front->tile) ||
+				const StationID front_station = GetTrainVehicleStationID(moving_front);
+				if (front_station == StationID::Invalid() || GetTrainVehicleStationID(moving_back) != front_station ||
 						moving_front->flags.Test(VehicleRailFlag::BeyondPlatformEnd) ||
 						v->current_order.IsType(OT_LOADING_ADVANCE)) {
 					v->LeaveStation();
@@ -3460,6 +3478,7 @@ static void CheckNextTrainTile(Train *moving_front)
 
 	/* Exit if we are on a station tile and are going to stop. */
 	if (HasStationTileRail(moving_front->tile) && consist->current_order.ShouldStopAtStation(consist, GetStationIndex(moving_front->tile), IsRailWaypoint(moving_front->tile))) return;
+	if (IsTrainOnTunnelBridgeStationPlatform(moving_front) && consist->current_order.ShouldStopAtStation(consist, GetTunnelBridgeStationID(moving_front->tile), false)) return;
 
 	switch (consist->current_order.GetType()) {
 		/* Exit if we reached our destination depot. */
@@ -4001,6 +4020,12 @@ static PBSTileInfo ExtendTrainReservation(const Train *v, const PBSTileInfo &ori
 
 		/* Station, depot or waypoint are a possible target. */
 		bool target_seen = ft.is_station || (IsTileType(ft.new_tile, TileType::Railway) && !IsPlainRail(ft.new_tile));
+
+		/* The entrance of a tunnel/bridge with a station platform is a possible target, so that the pathfinder starts its search there. */
+		if (!ft.is_tunnel && !ft.is_bridge && IsTunnelBridgeStationTile(ft.new_tile) && KillFirstBit(ft.new_td_bits) == TRACKDIR_BIT_NONE &&
+				TrackdirEntersTunnelBridge(ft.new_tile, FindFirstTrackdir(ft.new_td_bits))) {
+			target_seen = true;
+		}
 		if (target_seen || KillFirstBit(ft.new_td_bits) != TRACKDIR_BIT_NONE) {
 			/* Choice found or possible target encountered.
 			 * On finding a possible target, we need to stop and let the pathfinder handle the
@@ -4253,7 +4278,7 @@ public:
 
 		Train *moving_front = v->GetMovingFront();
 		if (v->current_order.IsBaseStationOrder() ?
-				HasStationTileRail(moving_front->tile) && v->current_order.GetDestination() == GetStationIndex(moving_front->tile) :
+				((HasStationTileRail(moving_front->tile) || IsTrainOnTunnelBridgeStationPlatform(moving_front)) && v->current_order.GetDestination() == GetTrainVehicleStationID(moving_front)) :
 				moving_front->tile == v->dest_tile) {
 			if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC && v->current_order.IsBaseStationOrder()) {
 				if (v->current_order.ShouldStopAtStation(v, v->current_order.GetDestination().ToStationID(), v->current_order.IsType(OT_GOTO_WAYPOINT))) {
@@ -4722,7 +4747,13 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 
 	result_flags |= CTTRF_RESERVATION_MADE;
 
-	auto check_destination_seen = [&](TileIndex tile) {
+	auto check_destination_seen = [&](TileIndex tile, Trackdir td) {
+		if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC && consist->current_order.IsBaseStationOrder() && !HasStationTileRail(tile)) {
+			const StationID tb_station = GetTunnelBridgeStationOfReservationEnd(tile, td);
+			if (tb_station != StationID::Invalid() && consist->current_order.ShouldStopAtStation(consist, tb_station, false)) {
+				SetBit(lookahead_state.flags, CTTLASF_STOP_FOUND);
+			}
+		}
 		if (_settings_game.vehicle.train_braking_model == TBM_REALISTIC && consist->current_order.IsBaseStationOrder() &&
 				HasStationTileRail(tile)) {
 			if (consist->current_order.ShouldStopAtStation(consist, GetStationIndex(tile), IsRailWaypoint(tile))) {
@@ -4736,7 +4767,7 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 		}
 	};
 
-	check_destination_seen(res_dest.tile);
+	check_destination_seen(res_dest.tile, res_dest.trackdir);
 
 	/* Reservation target found and free, check if it is safe. */
 	while (!IsSafeWaitingPosition(consist, res_dest.tile, res_dest.trackdir, true, _settings_game.pf.forbid_90_deg)) {
@@ -4756,7 +4787,7 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 			if (cur_dest.tile != INVALID_TILE) {
 				res_dest = cur_dest;
 				if (res_dest.okay) {
-					check_destination_seen(res_dest.tile);
+					check_destination_seen(res_dest.tile, res_dest.trackdir);
 					continue;
 				}
 				/* Path found, but could not be reserved. */
@@ -4781,7 +4812,9 @@ static ChooseTrainTrackResult ChooseTrainTrack(Train *consist, const TileIndex t
 
 	if (result_flags & CTTRF_RESERVATION_MADE) {
 		if (temporary_slot_state.IsActive()) temporary_slot_state.PopFromChangeStackApplyTemporaryChanges(consist);
-		if (consist->current_order.IsBaseStationOrder() && HasStationTileRail(res_dest.tile) && consist->current_order.GetDestination() == GetStationIndex(res_dest.tile)) {
+		if (consist->current_order.IsBaseStationOrder() &&
+				((HasStationTileRail(res_dest.tile) && consist->current_order.GetDestination() == GetStationIndex(res_dest.tile)) ||
+				(consist->current_order.IsType(OT_GOTO_STATION) && IsTunnelBridgeStationDestination(res_dest.tile, res_dest.trackdir, consist->current_order.GetDestination().ToStationID())))) {
 			if (consist->current_order.ShouldStopAtStation(consist, consist->current_order.GetDestination().ToStationID(), consist->current_order.IsType(OT_GOTO_WAYPOINT))) {
 				consist->last_station_visited = consist->current_order.GetDestination().ToStationID();
 			}
@@ -5083,8 +5116,10 @@ static void TrainEnterStation(Train *consist, StationID station)
 	consist->BeginLoading();
 
 	TileIndex station_tile = consist->GetStationLoadingVehicle()->tile;
-	TriggerStationRandomisation(st, station_tile, StationRandomTrigger::VehicleArrives);
-	TriggerStationAnimation(st, station_tile, StationAnimationTrigger::VehicleArrives);
+	if (IsRailStationTile(station_tile)) {
+		TriggerStationRandomisation(st, station_tile, StationRandomTrigger::VehicleArrives);
+		TriggerStationAnimation(st, station_tile, StationAnimationTrigger::VehicleArrives);
+	}
 }
 
 /**
@@ -6305,6 +6340,13 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 				DecreaseReverseDistance(v);
 				if (v->lookahead != nullptr) AdvanceLookAheadPosition(v);
 				if (v->flags.Test(VehicleRailFlag::PendingSpeedRestriction)) DecrementPendingSpeedRestrictions(v);
+				if (IsTunnelBridgeStation(v->tile)) {
+					/* Station platform inside the tunnel/bridge */
+					const StationID station_id = GetTunnelBridgeStationID(v->tile);
+					if (TrainCheckStationStopLocation(v, v->tile, station_id, false, gp.x, gp.y).Test(VehicleEnterTileState::EnteredStation)) {
+						TrainEnterStation(first, station_id);
+					}
+				}
 				if (v->gv_flags.Test(GroundVehicleFlag::Chunnel)) {
 					/* update the Z position of the vehicle */
 					int old_z = v->UpdateInclination(false, false, true);
@@ -7003,7 +7045,8 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 		bool may_reverse = ProcessOrders(consist);
 
 		Train *moving_front = consist->GetMovingFront();
-		if (IsRailStationTile(moving_front->tile) && GetStationIndex(moving_front->tile) == station_id && Company::Get(consist->owner)->settings.remain_if_next_order_same_station) {
+		if ((IsRailStationTile(moving_front->tile) || IsTrainOnTunnelBridgeStationPlatform(moving_front)) && GetTrainVehicleStationID(moving_front) == station_id &&
+				Company::Get(consist->owner)->settings.remain_if_next_order_same_station) {
 			if (consist->current_order.IsType(OT_GOTO_STATION) && consist->current_order.GetDestination() == station_id &&
 					!(consist->current_order.GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)) {
 				consist->last_station_visited = station_id;
@@ -7066,8 +7109,8 @@ static bool TrainLocoHandler(Train *consist, bool mode)
 			/* Do not skip waypoints (incl. 'via' stations) when passing through at full speed. */
 			if ((order_type == OT_GOTO_WAYPOINT || order_type == OT_GOTO_STATION) &&
 						(consist->current_order.GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION) &&
-						IsTileType(moving_front->tile, TileType::Station) &&
-						consist->current_order.GetDestination() == GetStationIndex(moving_front->tile)) {
+						GetTrainVehicleStationID(moving_front) != StationID::Invalid() &&
+						consist->current_order.GetDestination() == GetTrainVehicleStationID(moving_front)) {
 				ProcessOrders(consist);
 			}
 		}

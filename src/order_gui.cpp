@@ -22,6 +22,7 @@
 #include "tilehighlight_func.h"
 #include "network/network.h"
 #include "station_base.h"
+#include "tunnelbridge_station.h"
 #include "industry.h"
 #include "waypoint_base.h"
 #include "core/geometry_func.hpp"
@@ -1459,11 +1460,13 @@ static Order GetOrderCmdFromTile(const Vehicle *v, TileIndex tile)
 	}
 
 	/* check for station or industry with neutral station */
-	if (IsTileType(tile, TileType::Station) || IsTileType(tile, TileType::Industry)) {
+	if (IsTileType(tile, TileType::Station) || IsTileType(tile, TileType::Industry) || IsTunnelBridgeStationTile(tile)) {
 		const Station *st = nullptr;
 
 		if (IsTileType(tile, TileType::Station)) {
 			st = Station::GetByTile(tile);
+		} else if (IsTunnelBridgeStationTile(tile)) {
+			st = Station::Get(GetTunnelBridgeStationID(tile));
 		} else {
 			const Industry *in = Industry::GetByTile(tile);
 			st = in->neutral_station;
@@ -4044,11 +4047,13 @@ public:
 				if (!_settings_client.gui.quick_goto) ResetObjectToPlace();
 			}
 		} else if (this->goto_type == OPOS_COND_VIA || this->goto_type == OPOS_COND_STATION) {
-			if (IsTileType(tile, TileType::Station) || IsTileType(tile, TileType::Industry)) {
+			if (IsTileType(tile, TileType::Station) || IsTileType(tile, TileType::Industry) || IsTunnelBridgeStationTile(tile)) {
 				const Station *st = nullptr;
 
 				if (IsTileType(tile, TileType::Station)) {
 					st = Station::GetByTile(tile);
+				} else if (IsTunnelBridgeStationTile(tile)) {
+					st = Station::Get(GetTunnelBridgeStationID(tile));
 				} else {
 					const Industry *in = Industry::GetByTile(tile);
 					st = in->neutral_station;
@@ -4060,11 +4065,13 @@ public:
 				}
 			}
 		} else if (this->goto_type == OPOS_DEPARTURE_VIA) {
-			if (IsTileType(tile, TileType::Station) || IsTileType(tile, TileType::Industry)) {
+			if (IsTileType(tile, TileType::Station) || IsTileType(tile, TileType::Industry) || IsTunnelBridgeStationTile(tile)) {
 				const BaseStation *st = nullptr;
 
 				if (IsTileType(tile, TileType::Station)) {
 					st = BaseStation::GetByTile(tile);
+				} else if (IsTunnelBridgeStationTile(tile)) {
+					st = BaseStation::Get(GetTunnelBridgeStationID(tile));
 				} else {
 					const Industry *in = Industry::GetByTile(tile);
 					st = in->neutral_station;

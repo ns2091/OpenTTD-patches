@@ -14,6 +14,7 @@
 
 #include "../../pbs.h"
 #include "../../tracerestrict.h"
+#include "../../tunnelbridge_station.h"
 #include "../follow_track.hpp"
 #include "../pathfinder_type.h"
 #include "yapf_type.hpp"
@@ -761,6 +762,15 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 				/* We will end in this pass (station is possible target) */
 				end_segment_reason.Set(EndSegmentReason::Station);
 
+			} else if ((follower->is_tunnel || follower->is_bridge) && cur.tile_type == TileType::TunnelBridge && IsTunnelBridgeStation(cur.tile)) {
+				/* Station platform inside a tunnel or bridge, which has just been passed through. */
+				uint platform_length = follower->tiles_skipped;
+				/* We don't know yet if the station is our target or not. Act like
+				 * if it is pass-through station (not our destination). */
+				segment_cost += Yapf().PfGetSettings().rail_station_penalty * platform_length;
+				/* We will end in this pass (station is possible target) */
+				end_segment_reason.Set(EndSegmentReason::Station);
+
 			} else if (TrackFollower::DoTrackMasking() && cur.tile_type == TileType::Railway) {
 				/* Searching for a safe tile? */
 				if (HasSignalOnTrackdir(cur.tile, cur.td) && !IsPbsSignal(GetSignalType(cur.tile, TrackdirToTrack(cur.td)))) {
@@ -928,9 +938,15 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 
 			/* Station platform-length penalty. */
 			if (end_segment_reason.Test(EndSegmentReason::Station)) {
-				const BaseStation *st = BaseStation::GetByTile(n.GetLastTile());
-				dbg_assert(st != nullptr);
-				uint platform_length = st->GetPlatformLength(n.GetLastTile(), ReverseDiagDir(TrackdirToExitdir(n.GetLastTrackdir())));
+				uint platform_length;
+				if (IsTileType(n.GetLastTile(), TileType::TunnelBridge)) {
+					/* Station platform inside a tunnel or bridge */
+					platform_length = GetTunnelBridgeStationPlatformLength(n.GetLastTile());
+				} else {
+					const BaseStation *st = BaseStation::GetByTile(n.GetLastTile());
+					dbg_assert(st != nullptr);
+					platform_length = st->GetPlatformLength(n.GetLastTile(), ReverseDiagDir(TrackdirToExitdir(n.GetLastTrackdir())));
+				}
 				/* Reduce the extra cost caused by passing-station penalty (each station receives it in the segment cost). */
 				extra_cost -= Yapf().PfGetSettings().rail_station_penalty * platform_length;
 				/* Add penalty for the inappropriate platform length. */

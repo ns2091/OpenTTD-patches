@@ -150,6 +150,7 @@ enum SlXvFeatureIndex {
 	XSLFI_ERNC_CHUNK,                             ///< ERNC chunk
 	XSLFI_STATION_CARGO_TRUNCATE,                 ///< Station cargo truncation setting
 	XSLFI_DIAGONAL_TUNNELS,                       ///< Diagonal rail tunnels
+	XSLFI_TUNNEL_BRIDGE_STATIONS,                 ///< Station platforms in rail tunnels and on rail bridges
 
 	XSLFI_SCRIPT_INT64,                           ///< See: SLV_SCRIPT_INT64
 	XSLFI_U64_TICK_COUNTER,                       ///< See: SLV_U64_TICK_COUNTER

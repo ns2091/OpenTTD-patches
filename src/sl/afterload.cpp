@@ -83,6 +83,7 @@
 #include "saveload_internal.h"
 #include "saveload_func.h"
 #include "../diagonal_tunnel.h"
+#include "../tunnelbridge_station.h"
 
 #include "../table/strings.h"
 
@@ -4088,6 +4089,15 @@ bool AfterLoadGame()
 	}
 
 	/* Compute station catchment areas. This is needed here in case UpdateStationAcceptance is called below. */
+	if (SlXvIsFeatureMissing(XSLFI_TUNNEL_BRIDGE_STATIONS)) {
+		/* Make sure that no stale tunnel/bridge station flags are present */
+		ClearTunnelBridgeStations();
+		for (TileIndex t(0); t < Map::Size(); t++) {
+			if (IsTileType(t, TileType::TunnelBridge) && GetTunnelBridgeTransportType(t) == TransportType::Rail) SetTunnelBridgeStationFlag(t, false);
+		}
+	}
+	RebuildTunnelBridgeStationCaches();
+
 	Station::RecomputeCatchmentForAll();
 
 	/* Station acceptance is some kind of cache */

@@ -73,6 +73,8 @@
 
 #include "table/strings.h"
 
+#include "tunnelbridge_station.h"
+#include "tunnel_base.h"
 #include "3rdparty/cpp-btree/btree_set.h"
 #include "3rdparty/robin_hood/robin_hood.h"
 
@@ -120,16 +122,22 @@ CommandCost GetStationAround(TileArea ta, StationID closest_station, CompanyID c
 {
 	ta.Expand(1);
 
+	auto check_station = [&](StationID t) -> bool {
+		if (!T::IsValidID(t) || T::Get(t)->owner != company || !filter(T::Get(t))) return true;
+		if (closest_station == StationID::Invalid()) {
+			closest_station = t;
+		} else if (closest_station != t) {
+			return false;
+		}
+		return true;
+	};
+
 	/* check around to see if there are any stations there owned by the company */
 	for (TileIndex tile_cur : ta) {
 		if (IsTileType(tile_cur, TileType::Station)) {
-			StationID t = GetStationIndex(tile_cur);
-			if (!T::IsValidID(t) || T::Get(t)->owner != company || !filter(T::Get(t))) continue;
-			if (closest_station == StationID::Invalid()) {
-				closest_station = t;
-			} else if (closest_station != t) {
-				return CommandCost(STR_ERROR_ADJOINS_MORE_THAN_ONE_EXISTING);
-			}
+			if (!check_station(GetStationIndex(tile_cur))) return CommandCost(STR_ERROR_ADJOINS_MORE_THAN_ONE_EXISTING);
+		} else if (IsTunnelBridgeStationTile(tile_cur)) {
+			if (!check_station(GetTunnelBridgeStationID(tile_cur))) return CommandCost(STR_ERROR_ADJOINS_MORE_THAN_ONE_EXISTING);
 		}
 	}
 	*st = (closest_station == StationID::Invalid()) ? nullptr : T::Get(closest_station);
@@ -2011,7 +2019,9 @@ CommandCost RemoveFromRailBaseStation(TileArea ta, std::vector<T *> &affected_st
 		UpdateStationSignCoord(st);
 
 		/* if we deleted the whole station, delete the train facility. */
-		if (st->train_station.tile == INVALID_TILE) {
+		bool has_tunnel_bridge_platforms = false;
+		if constexpr (std::is_same_v<T, Station>) has_tunnel_bridge_platforms = !st->tunnel_bridge_platforms.empty();
+		if (st->train_station.tile == INVALID_TILE && !has_tunnel_bridge_platforms) {
 			st->facilities.Reset(StationFacility::Train);
 			SetWindowClassesDirty(WindowClass::VehicleOrders);
 			SetWindowWidgetDirty(WindowClass::StationView, st->index, WID_SV_TRAINS);
@@ -2054,6 +2064,147 @@ CommandCost CmdRemoveFromRailStation(DoCommandFlags flags, TileIndex start, Tile
 
 	/* Now apply the rail cost to the number that we deleted */
 	return ret;
+}
+
+/**
+ * Make the middle part of a rail tunnel or bridge into a platform of a station.
+ * @param flags operation to perform
+ * @param tile one of the end tiles of the tunnel or bridge
+ * @param station_to_join station ID to join (NEW_STATION if build new one)
+ * @param adjacent allow stations directly adjacent to other stations.
+ * @return the cost of this operation or an error
+ */
+CommandCost CmdBuildTunnelBridgeStation(DoCommandFlags flags, TileIndex tile, StationID station_to_join, bool adjacent)
+{
+	if (!IsValidTile(tile) || !IsTileType(tile, TileType::TunnelBridge) || GetTunnelBridgeTransportType(tile) != TransportType::Rail) {
+		return CommandCost(STR_ERROR_TUNNEL_BRIDGE_STATION_NOT_RAIL_TUNNEL_BRIDGE);
+	}
+	if (IsTunnelBridgeStation(tile)) return CommandCost(STR_ERROR_ALREADY_BUILT);
+
+	CommandCost ret = CheckTileOwnership(tile);
+	if (ret.Failed()) return ret;
+
+	const TileIndex other_end = GetOtherTunnelBridgeEnd(tile);
+	if (IsTunnel(tile) && Tunnel::GetByTile(tile)->is_chunnel) return CommandCost(STR_ERROR_TUNNEL_BRIDGE_STATION_CHUNNEL);
+	if (IsTunnelBridgeWithSignalSimulation(tile) || IsTunnelBridgeWithSignalSimulation(other_end)) return CommandCost(STR_ERROR_MUST_REMOVE_SIGNALS_FIRST);
+	if (IsBridge(tile) && (IsRailCustomBridgeHead(tile) || IsRailCustomBridgeHead(other_end))) return CommandCost(STR_ERROR_TUNNEL_BRIDGE_STATION_CUSTOM_BRIDGE_HEAD);
+
+	const uint length = GetTunnelBridgeLength(tile, other_end);
+	if (length == 0) return CommandCost(STR_ERROR_TUNNEL_BRIDGE_STATION_TOO_SHORT);
+
+	bool reuse = (station_to_join != NEW_STATION);
+	if (!reuse) station_to_join = StationID::Invalid();
+	bool distant_join = (station_to_join != StationID::Invalid());
+	if (distant_join && (!_settings_game.station.distant_join_stations || !Station::IsValidID(station_to_join))) return CMD_ERROR;
+
+	const TileArea area = GetTunnelBridgeStationArea(tile);
+	if (area.w > _settings_game.station.station_spread || area.h > _settings_game.station.station_spread) return CommandCost(STR_ERROR_STATION_TOO_SPREAD_OUT);
+
+	ret = CheckIfAuthorityAllowsNewStation(tile, flags);
+	if (ret.Failed()) return ret;
+
+	/* Trains which already have a path reserved through the tunnel/bridge would not know about the station. */
+	ret = TunnelBridgeIsFree(tile, other_end);
+	if (ret.Failed()) return ret;
+	if (GetTunnelBridgeReservationTrackBits(tile) != TRACK_BIT_NONE || GetTunnelBridgeReservationTrackBits(other_end) != TRACK_BIT_NONE) {
+		return CommandCost(STR_ERROR_TUNNEL_BRIDGE_STATION_RESERVED);
+	}
+
+	Station *st = nullptr;
+	ret = FindJoiningStation(StationID::Invalid(), station_to_join, adjacent, area, &st);
+	if (ret.Failed()) return ret;
+
+	ret = BuildStationPart(&st, flags, reuse, area, StationNaming::Rail);
+	if (ret.Failed()) return ret;
+
+	CommandCost cost(ExpensesType::Construction);
+	cost.AddCost((_price[Price::BuildStationRail] + _price[Price::BuildStationRailLength]) * length);
+
+	if (flags.Test(DoCommandFlag::Execute)) {
+		st->AddFacility(StationFacility::Train, tile);
+		st->rect.BeforeAddRect(area.tile, area.w, area.h, StationRect::ADD_TRY);
+
+		AddTunnelBridgeStation(tile, st);
+
+		Company::Get(GetTileOwner(tile))->infrastructure.station += length;
+
+		const Track track = DiagDirToDiagTrack(GetTunnelBridgeDirection(tile));
+		for (TileIndex t : { tile, other_end }) {
+			YapfNotifyTrackLayoutChange(t, track);
+		}
+		MarkBridgeOrTunnelDirty(tile, other_end);
+
+		st->AfterStationTileSetChange(true, StationType::Rail);
+		SetWindowClassesDirty(WindowClass::VehicleOrders);
+	}
+
+	return cost;
+}
+
+/**
+ * Remove the station platform from a rail tunnel or bridge, without any checks.
+ * @param tile one of the end tiles of the tunnel or bridge
+ * @pre IsTunnelBridgeStationTile(tile)
+ */
+void DoRemoveTunnelBridgeStation(TileIndex tile)
+{
+	Station *st = Station::Get(GetTunnelBridgeStationID(tile));
+	const TileArea area = GetTunnelBridgeStationArea(tile);
+	const uint length = GetTunnelBridgeStationPlatformLength(tile);
+
+	RemoveTunnelBridgeStation(tile);
+
+	const Owner owner = GetTileOwner(tile);
+	Company *c = Company::GetIfValid(owner);
+	if (c != nullptr) c->infrastructure.station -= length;
+	DirtyCompanyInfrastructureWindows(owner);
+
+	st->rect.AfterRemoveRect(st, area);
+
+	const Track track = DiagDirToDiagTrack(GetTunnelBridgeDirection(tile));
+	for (TileIndex t : { area.tile, TileAddXY(area.tile, area.w - 1, area.h - 1) }) {
+		YapfNotifyTrackLayoutChange(t, track);
+	}
+	MarkBridgeOrTunnelDirty(tile, GetOtherTunnelBridgeEnd(tile));
+
+	if (st->train_station.tile == INVALID_TILE && st->tunnel_bridge_platforms.empty()) {
+		st->facilities.Reset(StationFacility::Train);
+		SetWindowWidgetDirty(WindowClass::StationView, st->index, WID_SV_TRAINS);
+		st->UpdateVirtCoord();
+	}
+	SetWindowClassesDirty(WindowClass::VehicleOrders);
+	st->AfterStationTileSetChange(false, StationType::Rail);
+}
+
+/**
+ * Remove the station platform from a rail tunnel or bridge.
+ * @param flags operation to perform
+ * @param tile one of the end tiles of the tunnel or bridge
+ * @return the cost of this operation or an error
+ */
+CommandCost CmdRemoveTunnelBridgeStation(DoCommandFlags flags, TileIndex tile)
+{
+	if (!IsValidTile(tile) || !IsTunnelBridgeStationTile(tile)) return CommandCost(STR_ERROR_THERE_IS_NO_STATION);
+
+	if (_current_company != OWNER_WATER && _game_mode != GameMode::Editor) {
+		CommandCost ret = CheckOwnership(Station::Get(GetTunnelBridgeStationID(tile))->owner);
+		if (ret.Failed()) return ret;
+	}
+
+	const TileIndex other_end = GetOtherTunnelBridgeEnd(tile);
+	CommandCost ret = TunnelBridgeIsFree(tile, other_end);
+	if (ret.Failed()) return ret;
+	if (GetTunnelBridgeReservationTrackBits(tile) != TRACK_BIT_NONE || GetTunnelBridgeReservationTrackBits(other_end) != TRACK_BIT_NONE) {
+		return CommandCost(STR_ERROR_TUNNEL_BRIDGE_STATION_RESERVED);
+	}
+
+	CommandCost cost(ExpensesType::Construction, _price[Price::ClearStationRail] * GetTunnelBridgeStationPlatformLength(tile));
+
+	if (flags.Test(DoCommandFlag::Execute)) {
+		DoRemoveTunnelBridgeStation(tile);
+	}
+
+	return cost;
 }
 
 /**
@@ -4090,6 +4241,76 @@ static bool ClickTile_Station(TileIndex tile)
 	return true;
 }
 
+/**
+ * Check whether a train has reached the location where it should stop at a station platform, and slow it down when approaching that location.
+ * @param t The train vehicle which is checked, this is the first vehicle in the direction of movement which is not beyond the platform end.
+ * @param tile The platform tile which the vehicle is on, or for platforms inside a tunnel or bridge, the tunnel/bridge end tile of the vehicle.
+ * @param station_id The station of the platform.
+ * @param is_waypoint Whether the station is a waypoint.
+ * @param x The x position of the vehicle.
+ * @param y The y position of the vehicle.
+ * @return VehicleEnterTileState::EnteredStation if the train should stop now.
+ */
+VehicleEnterTileStates TrainCheckStationStopLocation(Train *t, TileIndex tile, StationID station_id, bool is_waypoint, int x, int y)
+{
+	Train *consist = t->First();
+	if (t->flags.Test(VehicleRailFlag::BeyondPlatformEnd)) return {};
+	if (!consist->IsFrontEngine()) return {};
+	{
+		const Train *prev = t->GetMovingPrev();
+		if (!(prev == nullptr || prev->flags.Test(VehicleRailFlag::BeyondPlatformEnd))) return {};
+	}
+	if (!consist->current_order.ShouldStopAtStation(consist, station_id, is_waypoint)) return {};
+
+	int station_ahead;
+	int station_length;
+	int stop = GetTrainStopLocation(station_id, tile, t, true, &station_ahead, &station_length);
+
+	/* Stop whenever that amount of station ahead + the distance from the
+	 * begin of the platform to the stop location is longer than the length
+	 * of the platform. Station ahead 'includes' the current tile where the
+	 * vehicle is on, so we need to subtract that. */
+	if (stop + station_ahead - (int)TILE_SIZE >= station_length) return {};
+
+	DiagDirection dir = DirToDiagDir(t->GetMovingDirection());
+
+	x &= 0xF;
+	y &= 0xF;
+
+	if (DiagDirToAxis(dir) != Axis::X) std::swap(x, y);
+	if (y == TILE_SIZE / 2) {
+		if (dir != DiagDirection::SE && dir != DiagDirection::SW) x = TILE_SIZE - 1 - x;
+		stop &= TILE_SIZE - 1;
+
+		if (x == stop) {
+			if (consist->UsingRealisticBraking() && consist->cur_speed > 15 && !(consist->lookahead != nullptr && consist->lookahead->flags.Test(TrainReservationLookAheadFlag::ApplyAdvisory))) {
+				/* Travelling too fast, do not stop and report overshoot to player */
+				if (consist->owner == _local_company) {
+					EncodedString msg = GetEncodedString(STR_NEWS_TRAIN_OVERSHOT_STATION,
+							consist->index,
+							is_waypoint ? STR_WAYPOINT_NAME : STR_STATION_NAME,
+							station_id);
+					AddNewsItem(std::move(msg), NewsType::Advice, NewsStyle::Small, {NewsFlag::InColour, NewsFlag::VehicleParam0}, consist->index, station_id);
+				}
+				for (Train *u = consist; u != nullptr; u = u->Next()) {
+					u->flags.Reset(VehicleRailFlag::BeyondPlatformEnd);
+				}
+				return {};
+			}
+			return VehicleEnterTileState::EnteredStation; // enter station
+		} else if (x < stop) {
+			if (consist->UsingRealisticBraking() && consist->cur_speed > 30) {
+				/* Travelling too fast, take no action */
+				return {};
+			}
+			consist->vehstatus.Set(VehState::TrainSlowing);
+			uint16_t spd = std::max(0, (stop - x) * 20 - 15);
+			if (spd < consist->cur_speed) consist->cur_speed = spd;
+		}
+	}
+	return {};
+}
+
 /** @copydoc VehicleEnterTileProc */
 static VehicleEnterTileStates VehicleEnterTile_Station(Vehicle *v, TileIndex tile, int x, int y)
 {
@@ -4112,61 +4333,8 @@ static VehicleEnterTileStates VehicleEnterTile_Station(Vehicle *v, TileIndex til
 				}
 			}
 		}
-		if (t->flags.Test(VehicleRailFlag::BeyondPlatformEnd)) return {};
-		if (!consist->IsFrontEngine()) return {};
-		{
-			const Train *prev = t->GetMovingPrev();
-			if (!(prev == nullptr || prev->flags.Test(VehicleRailFlag::BeyondPlatformEnd))) return {};
-		}
 		if (!HasStationTileRail(tile)) return {};
-		if (!consist->current_order.ShouldStopAtStation(consist, station_id, IsRailWaypoint(tile))) return {};
-
-		int station_ahead;
-		int station_length;
-		int stop = GetTrainStopLocation(station_id, tile, t, true, &station_ahead, &station_length);
-
-		/* Stop whenever that amount of station ahead + the distance from the
-		 * begin of the platform to the stop location is longer than the length
-		 * of the platform. Station ahead 'includes' the current tile where the
-		 * vehicle is on, so we need to subtract that. */
-		if (stop + station_ahead - (int)TILE_SIZE >= station_length) return {};
-
-		DiagDirection dir = DirToDiagDir(v->GetMovingDirection());
-
-		x &= 0xF;
-		y &= 0xF;
-
-		if (DiagDirToAxis(dir) != Axis::X) std::swap(x, y);
-		if (y == TILE_SIZE / 2) {
-			if (dir != DiagDirection::SE && dir != DiagDirection::SW) x = TILE_SIZE - 1 - x;
-			stop &= TILE_SIZE - 1;
-
-			if (x == stop) {
-				if (consist->UsingRealisticBraking() && consist->cur_speed > 15 && !(consist->lookahead != nullptr && consist->lookahead->flags.Test(TrainReservationLookAheadFlag::ApplyAdvisory))) {
-					/* Travelling too fast, do not stop and report overshoot to player */
-					if (consist->owner == _local_company) {
-						EncodedString msg = GetEncodedString(STR_NEWS_TRAIN_OVERSHOT_STATION,
-								consist->index,
-								IsRailWaypointTile(tile) ? STR_WAYPOINT_NAME : STR_STATION_NAME,
-								station_id);
-						AddNewsItem(std::move(msg), NewsType::Advice, NewsStyle::Small, {NewsFlag::InColour, NewsFlag::VehicleParam0}, consist->index, station_id);
-					}
-					for (Train *u = consist; u != nullptr; u = u->Next()) {
-						u->flags.Reset(VehicleRailFlag::BeyondPlatformEnd);
-					}
-					return {};
-				}
-				return VehicleEnterTileState::EnteredStation; // enter station
-			} else if (x < stop) {
-				if (consist->UsingRealisticBraking() && consist->cur_speed > 30) {
-					/* Travelling too fast, take no action */
-					return {};
-				}
-				consist->vehstatus.Set(VehState::TrainSlowing);
-				uint16_t spd = std::max(0, (stop - x) * 20 - 15);
-				if (spd < consist->cur_speed) consist->cur_speed = spd;
-			}
-		}
+		return TrainCheckStationStopLocation(t, tile, station_id, IsRailWaypoint(tile), x, y);
 	} else if (v->type == VehicleType::Road) {
 		RoadVehicle *rv = RoadVehicle::From(v);
 		if (rv->state < RVSB_IN_ROAD_STOP && !IsReversingRoadTrackdir((Trackdir)rv->state) && rv->frame == 0) {
@@ -5911,6 +6079,18 @@ void ForAllStationsAroundTilesIntl(const TileArea &ta, ForAllStationsAroundTiles
 	TileArea ta_ext = TileArea(ta).Expand(max_c);
 	for (TileIndex tile : ta_ext) {
 		if (IsTileType(tile, TileType::Station)) seen_stations.insert(GetStationIndex(tile));
+	}
+	if (GetTunnelBridgeStationCount() > 0) {
+		const int left = TileX(ta_ext.tile);
+		const int top = TileY(ta_ext.tile);
+		const int right = left + ta_ext.w - 1;
+		const int bottom = top + ta_ext.h - 1;
+		IterateTunnelBridgeStations([&](TileIndex tile, StationID st) {
+			const TileArea area = GetTunnelBridgeStationArea(tile);
+			if ((int)TileX(area.tile) > right || (int)(TileX(area.tile) + area.w - 1) < left) return;
+			if ((int)TileY(area.tile) > bottom || (int)(TileY(area.tile) + area.h - 1) < top) return;
+			seen_stations.insert(st);
+		});
 	}
 
 	for (StationID stationid : seen_stations) {

@@ -15,6 +15,7 @@
 #include "strings_func.h"
 #include "timetable.h"
 #include "station_base.h"
+#include "tunnelbridge_station.h"
 #include "station_map.h"
 #include "station_func.h"
 #include "map_func.h"
@@ -3527,6 +3528,9 @@ static uint16_t GetFreeStationPlatforms(StationID st_id)
 			if (is_free) counter++;
 		}
 	}
+	for (TileIndex tile : st->tunnel_bridge_platforms) {
+		if (GetTunnelBridgeReservationTrackBits(tile) == TRACK_BIT_NONE && GetTunnelBridgeReservationTrackBits(GetOtherTunnelBridgeEnd(tile)) == TRACK_BIT_NONE) counter++;
+	}
 	return counter;
 }
 
@@ -4241,8 +4245,8 @@ bool ProcessOrders(Vehicle *v)
 	/* Check if we've reached a 'via' destination. */
 	if (((v->current_order.IsType(OT_GOTO_STATION) && (v->current_order.GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION)) ||
 			(v->current_order.IsType(OT_GOTO_WAYPOINT) && (!v->current_order.IsWaitTimetabled() || v->type != VehicleType::Train))) &&
-			IsTileType(moving_front->tile, TileType::Station) &&
-			v->current_order.GetDestination() == GetStationIndex(moving_front->tile)) {
+			((IsTileType(moving_front->tile, TileType::Station) && v->current_order.GetDestination() == GetStationIndex(moving_front->tile)) ||
+			(v->type == VehicleType::Train && IsTrainOnTunnelBridgeStationPlatform(Train::From(moving_front)) && v->current_order.GetDestination() == GetTunnelBridgeStationID(moving_front->tile)))) {
 		v->DeleteUnreachedImplicitOrders();
 		/* We set the last visited station here because we do not want
 		 * the train to stop at this 'via' station if the next order

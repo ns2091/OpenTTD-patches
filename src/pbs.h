@@ -62,6 +62,11 @@ enum TrainReservationSignalLookAheadItemFlags {
 	TRSLAI_COMBINED_SHUNT  = 3,           ///< This signal is a combined normal/shunt signal, in shunt mode
 };
 
+/** Flags for TRLIT_STATION look-ahead items, stored in TrainReservationLookAheadItem::data_aux. */
+enum TrainReservationStationLookAheadItemFlags : uint16_t {
+	TRLISF_TUNNEL_BRIDGE_PLATFORM = 1 << 0, ///< The platform is inside a tunnel or bridge
+};
+
 struct TrainReservationLookAheadItem {
 	int32_t start;
 	int32_t end;
@@ -108,10 +113,10 @@ struct TrainReservationLookAhead {
 		return this->reservation_end_position - (this->tunnel_bridge_reserved_tiles * TILE_SIZE);
 	}
 
-	void AddStation(int tiles, StationID id, int16_t z_pos)
+	void AddStation(int tiles, StationID id, int16_t z_pos, uint16_t station_flags = 0)
 	{
 		int32_t end = this->RealEndPosition();
-		this->items.push_back({ end, end + (((int32_t)TILE_SIZE) * tiles), z_pos, id.base(), 0, TRLIT_STATION });
+		this->items.push_back({ end, end + (((int32_t)TILE_SIZE) * tiles), z_pos, id.base(), station_flags, TRLIT_STATION });
 	}
 
 	void AddReverse(int16_t z_pos)

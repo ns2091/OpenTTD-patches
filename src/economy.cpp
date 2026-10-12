@@ -39,6 +39,7 @@
 #include "subsidy_base.h"
 #include "subsidy_func.h"
 #include "station_base.h"
+#include "tunnelbridge_station.h"
 #include "waypoint_base.h"
 #include "economy_base.h"
 #include "core/pool_func.hpp"
@@ -1952,13 +1953,14 @@ static void LoadUnloadVehicle(Vehicle *front)
 	Vehicle *station_vehicle = front;
 	if (front->type == VehicleType::Train) station_vehicle = Train::From(front)->GetStationLoadingVehicle();
 	TileIndex station_tile = station_vehicle->tile;
+	const bool tunnel_bridge_platform = (front->type == VehicleType::Train) && IsTrainOnTunnelBridgeStationPlatform(Train::From(station_vehicle));
 
 	SCOPE_INFO_FMT([&], "LoadUnloadVehicle: {}, {}, {}, 0x{:X}", StationInfoDumper(st), VehicleInfoDumper(front), VehicleInfoDumper(station_vehicle), station_tile);
 
 	bool pull_through_mode = false;
 	bool load_unload_not_yet_in_station = false;
 	bool unload_payment_not_yet_in_station = false;
-	if (front->type == VehicleType::Train && front->cur_real_order_index < front->GetNumOrders()) {
+	if (front->type == VehicleType::Train && front->cur_real_order_index < front->GetNumOrders() && !tunnel_bridge_platform) {
 		Order *order = front->GetOrder(front->cur_real_order_index);
 		if (order->IsType(OT_GOTO_STATION) && order->GetDestination() == last_visited &&
 				order->GetStopLocation() == OrderStopLocation::Through) {
@@ -1987,7 +1989,9 @@ static void LoadUnloadVehicle(Vehicle *front)
 		}
 	}
 	int platform_length_left = 0;
-	if (pull_through_mode) {
+	if (tunnel_bridge_platform) {
+		platform_length_left = GetTunnelBridgeStationPlatformLength(station_tile) * TILE_SIZE - front->GetGroundVehicleCache()->cached_total_length;
+	} else if (pull_through_mode) {
 		platform_length_left = st->GetPlatformLength(station_tile, ReverseDiagDir(DirToDiagDir(station_vehicle->GetMovingDirection()))) * TILE_SIZE - GetTileMarginInFrontOfTrain(Train::From(station_vehicle));
 	} else if (front->type == VehicleType::Train) {
 		platform_length_left = st->GetPlatformLength(station_tile) * TILE_SIZE - front->GetGroundVehicleCache()->cached_total_length;
@@ -2019,7 +2023,7 @@ static void LoadUnloadVehicle(Vehicle *front)
 	/* We have not waited enough time till the next round of loading/unloading */
 	if (front->load_unload_ticks != 0) return;
 
-	if (front->type == VehicleType::Train && (!IsTileType(station_tile, TileType::Station) || GetStationIndex(station_tile) != st->index)) {
+	if (front->type == VehicleType::Train && (tunnel_bridge_platform ? GetTunnelBridgeStationID(station_tile) != st->index : (!IsTileType(station_tile, TileType::Station) || GetStationIndex(station_tile) != st->index))) {
 		/* The train reversed in the station. Take the "easy" way
 		 * out and let the train just leave as it always did. */
 		front->vehicle_flags.Set(VehicleFlag::LoadingFinished);
@@ -2283,8 +2287,10 @@ static void LoadUnloadVehicle(Vehicle *front)
 
 	if (anything_loaded || anything_unloaded) {
 		if (front->type == VehicleType::Train) {
-			TriggerStationRandomisation(st, station_tile, StationRandomTrigger::VehicleLoads);
-			TriggerStationAnimation(st, station_tile, StationAnimationTrigger::VehicleLoads);
+			if (!tunnel_bridge_platform) {
+				TriggerStationRandomisation(st, station_tile, StationRandomTrigger::VehicleLoads);
+				TriggerStationAnimation(st, station_tile, StationAnimationTrigger::VehicleLoads);
+			}
 		} else if (front->type == VehicleType::Road) {
 			TriggerRoadStopRandomisation(st, station_tile, StationRandomTrigger::VehicleLoads);
 			TriggerRoadStopAnimation(st, station_tile, StationAnimationTrigger::VehicleLoads);

@@ -35,6 +35,7 @@
 #include "train.h"
 #include "tunnelbridge.h"
 #include "diagonal_tunnel.h"
+#include "tunnelbridge_station.h"
 #include "vehicle_base.h"
 
 #include "safeguards.h"
@@ -305,6 +306,11 @@ void CheckCaches(bool force_check, std::function<void(std::string_view)> log, Ch
 	}
 
 	if (flags & CHECK_CACHE_GENERAL) {
+		/* Check the tunnel/bridge station caches. */
+		ValidateTunnelBridgeStationCaches([&](std::string_view str) {
+			cclog("{}", str);
+		});
+
 		/* Check the diagonal tunnel cache. This must be done before checking the infrastructure totals. */
 		ValidateDiagonalTunnelCache([&](std::string_view str) {
 			cclog("{}", str);

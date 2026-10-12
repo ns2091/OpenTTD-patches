@@ -361,6 +361,7 @@ static const std::vector<ChunkHandler> &ChunkHandlers()
 	extern const ChunkHandlerTable _template_replacement_chunk_handlers;
 	extern const ChunkHandlerTable _template_vehicle_chunk_handlers;
 	extern const ChunkHandlerTable _bridge_signal_chunk_handlers;
+	extern const ChunkHandlerTable _tunnel_bridge_station_chunk_handlers;
 	extern const ChunkHandlerTable _tunnel_chunk_handlers;
 	extern const ChunkHandlerTable _train_speed_adaptation_chunk_handlers;
 	extern const ChunkHandlerTable _new_signal_chunk_handlers;
@@ -409,6 +410,7 @@ static const std::vector<ChunkHandler> &ChunkHandlers()
 		_template_replacement_chunk_handlers,
 		_template_vehicle_chunk_handlers,
 		_bridge_signal_chunk_handlers,
+		_tunnel_bridge_station_chunk_handlers,
 		_tunnel_chunk_handlers,
 		_train_speed_adaptation_chunk_handlers,
 		_new_signal_chunk_handlers,

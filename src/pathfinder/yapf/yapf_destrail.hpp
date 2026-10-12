@@ -13,6 +13,7 @@
 #include "../../train.h"
 #include "../pathfinder_func.h"
 #include "../pathfinder_type.h"
+#include "../../tunnelbridge_station.h"
 
 class CYapfDestinationRailBase {
 protected:
@@ -180,6 +181,10 @@ public:
 	inline bool PfDetectDestination(TileIndex tile, Trackdir td)
 	{
 		if (this->dest_station_id != StationID::Invalid()) {
+			if (IsTileType(tile, TileType::TunnelBridge)) {
+				/* Station platform inside a tunnel or bridge */
+				return IsTunnelBridgeStationDestination(tile, td, this->dest_station_id);
+			}
 			return HasStationTileRail(tile)
 				&& (GetStationIndex(tile) == this->dest_station_id)
 				&& (GetRailStationTrack(tile) == TrackdirToTrack(td));

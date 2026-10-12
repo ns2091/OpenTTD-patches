@@ -22,6 +22,7 @@
 #include "vehiclelist.h"
 #include "core/pool_func.hpp"
 #include "station_base.h"
+#include "tunnelbridge_station.h"
 #include "station_kdtree.h"
 #include "roadstop_base.h"
 #include "industry.h"
@@ -105,6 +106,16 @@ Station::~Station()
 
 	while (!this->loading_vehicles.empty()) {
 		this->loading_vehicles.front()->LeaveStation();
+	}
+
+	/* Tunnel/bridge platforms should already have been removed, but make sure that no dangling references remain. */
+	while (!this->tunnel_bridge_platforms.empty()) {
+		const TileIndex tile = this->tunnel_bridge_platforms.back();
+		if (IsTunnelBridgeStationTile(tile)) {
+			RemoveTunnelBridgeStation(tile);
+		} else {
+			this->tunnel_bridge_platforms.pop_back();
+		}
 	}
 
 	for (Aircraft *a : Aircraft::Iterate()) {
@@ -374,11 +385,12 @@ uint Station::GetCatchmentRadius() const
 	if (_settings_game.station.modified_catchment) {
 		if (this->bus_stops          != nullptr)      ret = std::max<uint>(ret, CA_BUS);
 		if (this->truck_stops        != nullptr)      ret = std::max<uint>(ret, CA_TRUCK);
-		if (this->train_station.tile != INVALID_TILE) ret = std::max<uint>(ret, CA_TRAIN);
+		if (this->train_station.tile != INVALID_TILE || !this->tunnel_bridge_platforms.empty()) ret = std::max<uint>(ret, CA_TRAIN);
 		if (this->ship_station.tile  != INVALID_TILE) ret = std::max<uint>(ret, CA_DOCK);
 		if (this->airport.tile       != INVALID_TILE) ret = std::max<uint>(ret, this->airport.GetSpec()->catchment);
 	} else {
-		if (this->bus_stops != nullptr || this->truck_stops != nullptr || this->train_station.tile != INVALID_TILE || this->ship_station.tile != INVALID_TILE || this->airport.tile != INVALID_TILE) {
+		if (this->bus_stops != nullptr || this->truck_stops != nullptr || this->train_station.tile != INVALID_TILE || this->ship_station.tile != INVALID_TILE || this->airport.tile != INVALID_TILE ||
+				!this->tunnel_bridge_platforms.empty()) {
 			ret = CA_UNMODIFIED;
 		}
 	}
@@ -531,6 +543,9 @@ void Station::RecomputeCatchment(bool no_clear_nearby_lists)
 			if (!IsTileType(tile, TileType::Station) || GetStationIndex(tile) != this->index) continue;
 			this->station_tiles++;
 		}
+		for (TileIndex tile : this->tunnel_bridge_platforms) {
+			this->station_tiles += GetTunnelBridgeStationPlatformLength(tile);
+		}
 		return;
 	}
 
@@ -549,6 +564,15 @@ void Station::RecomputeCatchment(bool no_clear_nearby_lists)
 
 		/* This tile sub-loop doesn't need to test any tiles, they are simply added to the catchment set. */
 		TileArea ta2 = TileArea(tile, 1, 1).Expand(r);
+		this->catchment_tiles.SetTiles(ta2);
+	}
+
+	/* Tunnel/bridge platforms: the whole tunnel/bridge including the end tiles is used for the catchment area */
+	for (TileIndex tile : this->tunnel_bridge_platforms) {
+		this->station_tiles += GetTunnelBridgeStationPlatformLength(tile);
+
+		const uint r = (_settings_game.station.modified_catchment ? CA_TRAIN : CA_UNMODIFIED) + _settings_game.station.catchment_increase;
+		TileArea ta2 = GetTunnelBridgeStationArea(tile).Expand(r);
 		this->catchment_tiles.SetTiles(ta2);
 	}
 
@@ -678,6 +702,9 @@ CommandCost StationRect::BeforeAddRect(TileIndex tile, int w, int h, StationRect
 	for (TileIndex tile : ta) {
 		if (IsTileType(tile, TileType::Station) && GetStationIndex(tile) == st_id) return true;
 	}
+
+	const Station *st = Station::GetIfValid(st_id);
+	if (st != nullptr && StationHasTunnelBridgePlatformInArea(st, left_a, top_a, right_a, bottom_a)) return true;
 
 	return false;
 }
