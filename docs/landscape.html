@@ -298,10 +298,6 @@
       </table>
      </li>
      <li style="color: blue">m8 bits 11..6 = <a name="TrackType">secondary track type</a> (used for lower or right track when two parallel tracks on tile)</li>
-     <li style="color: blue">m8 bit 12: set if the tile is a diagonal tunnel portal (normal rail only, m5 bits 7..6 = 0).<br>
-      The tile has one corner raised (slope N, E, S or W), and each of its track pieces (at most two, both on the side of the raised corner: upper/lower or left/right) leads into a separate diagonal tunnel.<br>
-      The two portal tiles of a diagonal tunnel are found by following the half tile track pieces in the direction of the raised corner, at the height of the lowest corner of the portal tile.<br>
-      The tunnels themselves are not stored in the map array, they are cached and rebuilt from the portal tiles when the game is loaded.</li>
      <li>m4 bits 7..4: see signals</li>
      <li>m4 bits 3..0: Ground type (values with fences are not valid for depots and checkpoints)
       <table>

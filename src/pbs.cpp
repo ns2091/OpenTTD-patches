@@ -581,7 +581,7 @@ static PBSTileInfo FollowReservation(Owner o, RailTypes rts, TileIndex tile, Tra
 			} else {
 				check_rail_type(tile, trackdir, 0);
 			}
-			check_direction(TrackdirToDirection(trackdir), (ft.tiles_skipped * TILE_SIZE) + (ft.diagonal_tunnel_half_tiles * (TILE_SIZE / 2)), tile);
+			check_direction(TrackdirToDirection(trackdir), ft.tiles_skipped * TILE_SIZE, tile);
 			if (IsTileType(tile, TileType::TunnelBridge) && TrackdirEntersTunnelBridge(tile, trackdir)) {
 				uint16_t bridge_speed = 0;
 				if (IsBridge(tile)) {
@@ -700,7 +700,7 @@ static PBSTileInfo FollowReservation(Owner o, RailTypes rts, TileIndex tile, Tra
 				}
 			}
 
-			lookahead->reservation_end_position += (IsDiagonalTrackdir(trackdir) ? 16 : 8) + (ft.tiles_skipped * 16) + (ft.diagonal_tunnel_half_tiles * 8);
+			lookahead->reservation_end_position += (IsDiagonalTrackdir(trackdir) ? 16 : 8) + (ft.tiles_skipped * 16);
 			update_z(tile, trackdir, false);
 		}
 
@@ -1243,21 +1243,7 @@ void FillTrainReservationLookAhead(Train *v)
 		tile = moving_front->tile;
 		trackdir = moving_front->GetVehicleTrackdir();
 		TileIndex virt_tile = TileVirtXY(moving_front->x_pos, moving_front->y_pos);
-		if (moving_front->gv_flags.Test(GroundVehicleFlag::DiagonalTunnel)) {
-			/* The front is inside a diagonal tunnel, but is treated as being on the portal tile through which it entered the tunnel */
-			const DiagonalTunnel *dt = GetDiagonalTunnel(tile, TrackdirToTrack(trackdir));
-			if (dt != nullptr && tile != virt_tile) {
-				const bool towards_far_end = TrackdirEntersDiagonalTunnel(tile, trackdir);
-				const int ahead = GetDiagonalTunnelHalfTilesAhead(dt, tile, moving_front->x_pos, moving_front->y_pos, towards_far_end);
-				if (towards_far_end) {
-					/* FollowReservation will add the length of the whole tunnel */
-					lookahead->reservation_end_position += (ahead - dt->length) * (TILE_SIZE / 2);
-				} else {
-					/* Add the remaining length inside the tunnel, and the length of the portal track */
-					lookahead->reservation_end_position += (ahead + 1) * (TILE_SIZE / 2);
-				}
-			}
-		} else if (tile != virt_tile) {
+		if (tile != virt_tile) {
 			lookahead->reservation_end_position += (IsDiagonalDirection(moving_front->direction) ? 16 : 8);
 		}
 		int station_offset_tiles = ScanTrainPositionForLookAheadStation(moving_front, tile);

@@ -457,7 +457,7 @@ protected: // These functions should not be called outside acceleration code.
 	inline uint8_t GetAirDragArea() const
 	{
 		/* Air drag is higher in tunnels due to the limited cross-section. */
-		return ((this->track & TRACK_BIT_WORMHOLE || this->gv_flags.Test(GroundVehicleFlag::DiagonalTunnel)) && this->vehstatus.Test(VehState::Hidden)) ? 28 : 14;
+		return (this->track & TRACK_BIT_WORMHOLE && this->vehstatus.Test(VehState::Hidden)) ? 28 : 14;
 	}
 
 	/**

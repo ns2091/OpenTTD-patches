@@ -18,7 +18,6 @@
 #include "../tunnelbridge_map.h"
 #include "../depot_map.h"
 #include "../infrastructure_func.h"
-#include "../diagonal_tunnel.h"
 #include "pathfinder_func.h"
 
 /**
@@ -48,9 +47,7 @@ struct CFollowTrackT {
 	bool                is_tunnel;     ///< last turn passed tunnel
 	bool                is_bridge;     ///< last turn passed bridge ramp
 	bool                is_station;    ///< last turn passed station
-	bool                is_diagonal_tunnel; ///< last turn passed a diagonal tunnel
 	int                 tiles_skipped; ///< number of skipped tunnel or station tiles
-	int                 diagonal_tunnel_half_tiles; ///< number of skipped diagonal tunnel half tiles (excluding the portals), these are not included in tiles_skipped
 	ErrorCode           err;
 	RailTypes           railtypes;
 
@@ -87,9 +84,7 @@ struct CFollowTrackT {
 		this->is_station = false;
 		this->is_bridge = false;
 		this->is_tunnel = false;
-		this->is_diagonal_tunnel = false;
 		this->tiles_skipped = 0;
-		this->diagonal_tunnel_half_tiles = 0;
 		this->err = ErrorCode::None;
 		this->railtypes = railtype_override;
 	}
@@ -151,10 +146,6 @@ struct CFollowTrackT {
 		this->FollowTileExit();
 		if (!this->QueryNewTileTrackStatus()) return TryReverse();
 		this->new_td_bits &= DiagdirReachesTrackdirs(this->exitdir);
-		if (IsRailTT() && !this->is_diagonal_tunnel && IsDiagonalTunnelPortalTile(this->new_tile)) {
-			/* The portal tracks of diagonal tunnels can't be entered from the side of the tunnel */
-			this->new_td_bits &= ~TrackBitsToTrackdirBits(GetDiagonalTunnelPortalTrackBitsOnTunnelSide(this->new_tile, ReverseDiagDir(this->exitdir)));
-		}
 		if (this->new_td_bits == TRACKDIR_BIT_NONE || !this->CanEnterNewTile()) {
 			/* In case we can't enter the next tile, but are
 			 * a normal road vehicle, then we can actually
@@ -176,7 +167,7 @@ struct CFollowTrackT {
 
 			return false;
 		}
-		if (this->tiles_skipped == 0 && !this->is_diagonal_tunnel && ((!IsRailTT() && !Allow90degTurns()) || (IsRailTT() && Rail90DegTurnDisallowedTilesFromDiagDir(this->old_tile, this->new_tile, this->exitdir, !Allow90degTurns())))) {
+		if (this->tiles_skipped == 0 && ((!IsRailTT() && !Allow90degTurns()) || (IsRailTT() && Rail90DegTurnDisallowedTilesFromDiagDir(this->old_tile, this->new_tile, this->exitdir, !Allow90degTurns())))) {
 			this->new_td_bits &= ~TrackdirCrossesTrackdirs(this->old_td);
 			if (this->new_td_bits == TRACKDIR_BIT_NONE) {
 				this->err = ErrorCode::SharpTurn;
@@ -223,22 +214,7 @@ protected:
 		this->is_station = false;
 		this->is_bridge = false;
 		this->is_tunnel = false;
-		this->is_diagonal_tunnel = false;
 		this->tiles_skipped = 0;
-		this->diagonal_tunnel_half_tiles = 0;
-
-		/* extra handling for diagonal tunnels in our direction */
-		if (IsRailTT() && IsDiagonalTunnelPortalTile(this->old_tile)) {
-			std::optional<DiagonalTunnelFarEnd> far_end = GetDiagonalTunnelFarEnd(this->old_tile, this->old_td);
-			if (far_end.has_value()) {
-				/* we are entering the diagonal tunnel */
-				this->is_diagonal_tunnel = true;
-				this->new_tile = far_end->tile;
-				this->exitdir = far_end->enterdir;
-				this->diagonal_tunnel_half_tiles = far_end->length;
-				return;
-			}
-		}
 
 		/* extra handling for tunnels and bridges in our direction */
 		if (IsTileType(this->old_tile, TileType::TunnelBridge)) {
@@ -467,9 +443,7 @@ protected:
 				this->new_td_bits = TrackdirToTrackdirBits(ReverseTrackdir(this->old_td));
 				this->exitdir = exitdir;
 				this->tiles_skipped = 0;
-				this->diagonal_tunnel_half_tiles = 0;
 				this->is_tunnel = false;
-				this->is_diagonal_tunnel = false;
 				this->is_bridge = false;
 				this->is_station = false;
 				return true;
@@ -484,9 +458,7 @@ protected:
 			this->new_td_bits = TrackdirToTrackdirBits(ReverseTrackdir(this->old_td));
 			this->exitdir = ReverseDiagDir(this->exitdir);
 			this->tiles_skipped = 0;
-			this->diagonal_tunnel_half_tiles = 0;
 			this->is_tunnel = false;
-			this->is_diagonal_tunnel = false;
 			this->is_bridge = false;
 			this->is_station = false;
 			return true;

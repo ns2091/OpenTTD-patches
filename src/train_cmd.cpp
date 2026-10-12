@@ -53,7 +53,6 @@
 #include "tbtr_template_vehicle_cmd.h"
 #include "script/api/script_event_types.hpp"
 #include "3rdparty/cpp-btree/btree_map.h"
-#include "diagonal_tunnel.h"
 
 #include "widgets/vehicle_widget.h"
 
@@ -2640,8 +2639,6 @@ static void SwapTrainFlags(GroundVehicleFlags *swap_flag1, GroundVehicleFlags *s
 
 	swap_flag1->Set(GroundVehicleFlag::Chunnel, flag2.Test(GroundVehicleFlag::Chunnel));
 	swap_flag2->Set(GroundVehicleFlag::Chunnel, flag1.Test(GroundVehicleFlag::Chunnel));
-	swap_flag1->Set(GroundVehicleFlag::DiagonalTunnel, flag2.Test(GroundVehicleFlag::DiagonalTunnel));
-	swap_flag2->Set(GroundVehicleFlag::DiagonalTunnel, flag1.Test(GroundVehicleFlag::DiagonalTunnel));
 }
 
 /**
@@ -5325,7 +5322,7 @@ static bool CheckTrainCollision(Train *moving_front)
 	/* can't collide in depot */
 	if (moving_front->track == TRACK_BIT_DEPOT) return false;
 
-	dbg_assert(moving_front->track & TRACK_BIT_WORMHOLE || moving_front->gv_flags.Test(GroundVehicleFlag::DiagonalTunnel) || TileVirtXY(moving_front->x_pos, moving_front->y_pos) == moving_front->tile);
+	dbg_assert(moving_front->track & TRACK_BIT_WORMHOLE || TileVirtXY(moving_front->x_pos, moving_front->y_pos) == moving_front->tile);
 
 	uint num_victims = 0;
 
@@ -5336,17 +5333,6 @@ static bool CheckTrainCollision(Train *moving_front)
 		}
 		for (Train *u : VehiclesOnTile<VehicleType::Train>(GetOtherTunnelBridgeEnd(moving_front->tile))) {
 			num_victims += CheckTrainCollision(u, moving_front);
-		}
-	} else if (moving_front->gv_flags.Test(GroundVehicleFlag::DiagonalTunnel)) {
-		/* Vehicles inside diagonal tunnels are associated with the portal tile through which they entered */
-		for (Train *u : VehiclesOnTile<VehicleType::Train>(moving_front->tile)) {
-			num_victims += CheckTrainCollision(u, moving_front);
-		}
-		const TileIndex other_end = GetOtherDiagonalTunnelEnd(moving_front->tile, FindFirstTrack(moving_front->track & TRACK_BIT_MASK));
-		if (other_end != INVALID_TILE) {
-			for (Train *u : VehiclesOnTile<VehicleType::Train>(other_end)) {
-				num_victims += CheckTrainCollision(u, moving_front);
-			}
 		}
 	} else {
 		for (Train *u : VehiclesNearTileXY<VehicleType::Train>(moving_front->x_pos, moving_front->y_pos, 7)) {
@@ -5797,56 +5783,6 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 
 
 		GetNewVehiclePosResult gp = GetNewVehiclePos(v);
-		if (v->gv_flags.Test(GroundVehicleFlag::DiagonalTunnel)) {
-			/* Inside a diagonal tunnel.
-			 * The vehicle retains the tile and track of the portal through which it entered the tunnel. */
-			const Track track = FindFirstTrack(v->track & TRACK_BIT_MASK);
-			const DiagonalTunnel *dt = GetDiagonalTunnel(v->tile, track);
-			assert_tile(dt != nullptr, v->tile);
-			const TileIndex far_tile = dt->GetOtherEnd(v->tile);
-			if (gp.new_tile == far_tile || gp.new_tile == v->tile) {
-				/* Leaving the tunnel, either at the far end, or at the near end after reversing inside the tunnel. */
-				v->gv_flags.Reset(GroundVehicleFlag::DiagonalTunnel);
-				v->vehstatus.Reset(VehState::Hidden);
-				v->UpdateIsDrawn();
-
-				if (gp.new_tile == far_tile) {
-					const TileIndex old_tile = v->tile;
-					const Track far_track = dt->GetOtherEndTrack(old_tile);
-					v->tile = far_tile;
-					v->track = TrackToTrackBits(far_track);
-
-					if (GetTileRailTypeByTrack(far_tile, far_track) != GetTileRailTypeByTrack(old_tile, track)) {
-						/* v->track and v->tile must both be valid and consistent before this is called */
-						first->ConsistChanged(CCF_TRACK);
-					}
-
-					if (v->IsMovingFront()) {
-						TryReserveRailTrack(far_tile, far_track);
-						CheckNextTrainTile(v);
-					}
-
-					/* Clear the reservation of the portal track through which the train entered when the last vehicle has left it */
-					if (v->GetMovingNext() == nullptr) ClearPathReservation(v, old_tile, GetDiagonalTunnelEntryTrackdir(old_tile, track));
-				}
-
-				goto diagonal_tunnel_exited;
-			}
-
-			v->x_pos = gp.x;
-			v->y_pos = gp.y;
-			v->UpdatePosition();
-			v->UpdateDeltaXY();
-			DecreaseReverseDistance(v);
-			if (v->lookahead != nullptr) AdvanceLookAheadPosition(v);
-			if (v->flags.Test(VehicleRailFlag::PendingSpeedRestriction)) DecrementPendingSpeedRestrictions(v);
-			if (v->IsDrawn()) v->Vehicle::UpdateViewport(true);
-			if (v->IsMovingFront() && first->lookahead != nullptr &&
-					first->cur_speed > 0 && first->lookahead->reservation_end_position <= first->lookahead->current_position + 24) {
-				TryLongReserveChooseTrainTrackFromReservationEnd(first, true);
-			}
-			continue;
-		}
 		if (!(v->track & TRACK_BIT_WORMHOLE) && gp.old_tile != gp.new_tile &&
 				IsRailBridgeHeadTile(gp.old_tile) && DiagdirBetweenTiles(gp.old_tile, gp.new_tile) == GetTunnelBridgeDirection(gp.old_tile)) {
 			/* left a bridge headtile into a wormhole */
@@ -6331,7 +6267,6 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 			}
 		}
 
-diagonal_tunnel_exited:
 		/* update image of train, as well as delta XY */
 		v->UpdateDeltaXY();
 
@@ -6760,12 +6695,8 @@ static bool TrainCanLeaveTile(const Train *moving_front)
 {
 	/* Exit if inside a tunnel/bridge or a depot */
 	if (moving_front->track & TRACK_BIT_WORMHOLE || moving_front->track == TRACK_BIT_DEPOT) return false;
-	if (moving_front->gv_flags.Test(GroundVehicleFlag::DiagonalTunnel)) return false;
 
 	TileIndex tile = moving_front->tile;
-
-	/* entering a diagonal tunnel? */
-	if (TrackdirEntersDiagonalTunnel(tile, moving_front->GetVehicleTrackdir())) return false;
 
 	/* entering a tunnel/bridge? */
 	if (IsTileType(tile, TileType::TunnelBridge)) {

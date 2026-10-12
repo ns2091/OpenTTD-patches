@@ -1331,7 +1331,6 @@ STR_LAI_TUNNEL_DESCRIPTION_RAILROAD_CHUNNEL                     :Railway tunnel 
 STR_LAI_TUNNEL_DESCRIPTION_RAILROAD_SIGNAL                      :Railway tunnel with signal simulation
 STR_LAI_TUNNEL_DESCRIPTION_RAILROAD_SIGNAL_CHUNNEL              :Railway tunnel with signal simulation (underwater)
 STR_LAI_TUNNEL_DESCRIPTION_ROAD_CHUNNEL                         :Road tunnel (underwater)
-STR_LAI_RAIL_DESCRIPTION_DIAGONAL_TUNNEL                        :Railway tunnel (diagonal)
 STR_LAI_BRIDGE_DESCRIPTION_RAILROAD_SIGNAL                      :Railway bridge with signal simulation
 
 STR_SAVELOAD_UNKNOWN_ID                                         :{YELLOW}This file may be from a different game.
@@ -2098,9 +2097,6 @@ STR_ERROR_TUNNEL_TOO_MANY                                       :{WHITE}... too 
 STR_ERROR_NO_DRILLING_ABOVE_CHUNNEL                             :{WHITE}No oil rigs allowed above underwater tunnels.
 STR_ERROR_ANOTHER_TUNNEL_IN_THE_WAY_FOR_CHUNNEL                 :{WHITE}Three tiles are needed to pass under the other tunnel.
 STR_ERROR_CHUNNEL_ONLY_OVER_SEA                                 :{WHITE}Underwater tunnels are only allowed to cross sea...
-STR_ERROR_SITE_UNSUITABLE_FOR_DIAGONAL_TUNNEL                   :{WHITE}... site unsuitable for diagonal tunnel entrance
-STR_ERROR_DIAGONAL_TUNNEL_EMERGES                               :{WHITE}... tunnel would emerge from the ground before reaching a suitable exit
-STR_ERROR_NOT_POSSIBLE_ON_DIAGONAL_TUNNEL_PORTAL                :{WHITE}... not possible on a diagonal tunnel entrance
 STR_ERROR_PURCHASE_LAND_LIMIT_REACHED                           :{WHITE}... land area purchasing limit reached
 STR_ERROR_CANT_PURCHASE_OTHER_COMPANY_DEPOT                     :{WHITE}Depot is owned by another company, and building vehicles there is not allowed.
 STR_ERROR_DEPOT_HAS_WRONG_RAIL_TYPE                             :{WHITE}Depot cannot be used to build trains with this rail type.

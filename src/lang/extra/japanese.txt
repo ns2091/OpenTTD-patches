@@ -197,8 +197,3 @@ STR_INTRO_TOOLTIP_NEWGRF_SETTINGS                               :{BLACK}NewGRF�
 STR_INTRO_TOOLTIP_AI_SETTINGS                                   :{BLACK}AI設定を表示
 STR_INTRO_TOOLTIP_GAMESCRIPT_SETTINGS                           :{BLACK}ゲームスクリプト設定を表示
 STR_INTRO_CAPTION_TRADITIONAL                                   :{WHITE}OpenTTD {REV}
-
-STR_ERROR_SITE_UNSUITABLE_FOR_DIAGONAL_TUNNEL                   :{WHITE}斜面が斜めトンネルの入り口に不適当です
-STR_ERROR_DIAGONAL_TUNNEL_EMERGES                               :{WHITE}適切な出口に達する前にトンネルが地上に出てしまいます
-STR_ERROR_NOT_POSSIBLE_ON_DIAGONAL_TUNNEL_PORTAL                :{WHITE}斜めトンネルの入り口では実行できません
-STR_LAI_RAIL_DESCRIPTION_DIAGONAL_TUNNEL                        :鉄道トンネル(斜め)

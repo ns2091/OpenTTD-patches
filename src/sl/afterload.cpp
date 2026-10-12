@@ -82,7 +82,6 @@
 
 #include "saveload_internal.h"
 #include "saveload_func.h"
-#include "../diagonal_tunnel.h"
 
 #include "../table/strings.h"
 
@@ -4610,16 +4609,6 @@ bool AfterLoadGame()
 	/* This needs to be done after conversion. */
 	RebuildViewportKdtree();
 	ViewportMapBuildTunnelCache();
-	if (SlXvIsFeatureMissing(XSLFI_DIAGONAL_TUNNELS)) {
-		/* Make sure that no stale diagonal tunnel portal or vehicle flags are present */
-		for (TileIndex t(0); t < Map::Size(); t++) {
-			if (IsPlainRailTile(t)) SetDiagonalTunnelPortal(t, false);
-		}
-		for (Train *t : Train::Iterate()) {
-			t->gv_flags.Reset(GroundVehicleFlag::DiagonalTunnel);
-		}
-	}
-	RebuildDiagonalTunnelCache();
 	AddIndustriesToLocationCaches();
 
 	/* Road stops is 'only' updating some caches */

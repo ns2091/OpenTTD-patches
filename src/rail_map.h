@@ -109,43 +109,6 @@ inline void SetHasSignals(TileIndex tile, bool signals)
 }
 
 /**
- * Is this plain rail tile the portal of one or more diagonal tunnels?
- * Diagonal tunnel portal tiles have a slope with exactly one corner raised,
- * and only contain track pieces adjacent to the raised corner (which are flat),
- * each of which leads into a separate diagonal tunnel.
- * @param t the tile to get the information from
- * @pre IsPlainRailTile(t)
- * @return true if and only if the tile is a diagonal tunnel portal
- */
-inline bool IsDiagonalTunnelPortal(TileIndex t)
-{
-	dbg_assert_tile(IsPlainRailTile(t), t);
-	return HasBit(_me[t].m8, 12);
-}
-
-/**
- * Is this tile a plain rail tile which is a diagonal tunnel portal?
- * @param t the tile to get the information from
- * @return true if and only if the tile is a diagonal tunnel portal
- */
-inline bool IsDiagonalTunnelPortalTile(TileIndex t)
-{
-	return IsPlainRailTile(t) && HasBit(_me[t].m8, 12);
-}
-
-/**
- * Set whether this plain rail tile is the portal of one or more diagonal tunnels.
- * @param t the tile to set the information for
- * @param portal whether the tile is a diagonal tunnel portal
- * @pre IsPlainRailTile(t)
- */
-inline void SetDiagonalTunnelPortal(TileIndex t, bool portal)
-{
-	dbg_assert_tile(IsPlainRailTile(t), t);
-	AssignBit(_me[t].m8, 12, portal);
-}
-
-/**
  * Gets the rail type of the given tile
  * @param t the tile to get the rail type from
  * @return the rail type of the tile
