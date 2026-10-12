@@ -213,7 +213,6 @@ struct CYapfRailNode : CYapfNodeT<CYapfNodeKeyTrackDir, CYapfRailNode> {
 			length += IsDiagonalTrackdir(cur_td) ? TILE_SIZE : (TILE_SIZE / 2);
 			if (!ft.Follow(cur, cur_td)) break;
 			length += TILE_SIZE * ft.tiles_skipped;
-			length += (TILE_SIZE / 2) * ft.diagonal_tunnel_half_tiles;
 			cur = ft.new_tile;
 			dbg_assert(KillFirstBit(ft.new_td_bits) == TRACKDIR_BIT_NONE);
 			cur_td = FindFirstTrackdir(ft.new_td_bits);

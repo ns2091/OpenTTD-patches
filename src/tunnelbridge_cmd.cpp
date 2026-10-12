@@ -59,7 +59,6 @@
 #include "depot_bridge.h"
 #include "rail_settings.h"
 #include "road_layout_func.h"
-#include "diagonal_tunnel.h"
 
 #include "table/strings.h"
 #include "table/bridge_land.h"
@@ -1030,7 +1029,7 @@ static inline CommandCost CanBuildChunnel(TileIndex tile, DiagDirection directio
 							GetIndustryGfx(tile) <= GFX_OILRIG_5)) return CommandCost(STR_ERROR_NO_DRILLING_ABOVE_CHUNNEL);
 
 					if (IsTileType(tile, TileType::Water) && IsSea(tile)) crossed_sea = true;
-					if (!_cheats.crossing_tunnels.value && (IsTunnelInWay(tile, start_z) || IsDiagonalTunnelInWay(tile, start_z, TRACK_BIT_ALL))) return CommandCost(STR_ERROR_ANOTHER_TUNNEL_IN_THE_WAY);
+					if (!_cheats.crossing_tunnels.value && IsTunnelInWay(tile, start_z)) return CommandCost(STR_ERROR_ANOTHER_TUNNEL_IN_THE_WAY);
 
 					tile += delta;
 					if (!IsValidTile(tile)) return CommandCost(STR_ERROR_CHUNNEL_THROUGH_MAP_BORDER);
@@ -1049,7 +1048,7 @@ static inline CommandCost CanBuildChunnel(TileIndex tile, DiagDirection directio
 				break;
 			}
 		}
-		if (!_cheats.crossing_tunnels.value && (IsTunnelInWay(tile, start_z) || IsDiagonalTunnelInWay(tile, start_z, TRACK_BIT_ALL))) return CommandCost(STR_ERROR_ANOTHER_TUNNEL_IN_THE_WAY);
+		if (!_cheats.crossing_tunnels.value && IsTunnelInWay(tile, start_z)) return CommandCost(STR_ERROR_ANOTHER_TUNNEL_IN_THE_WAY);
 	}
 	is_chunnel = crossed_sea;
 
@@ -1149,15 +1148,11 @@ CommandCost CmdBuildTunnel(DoCommandFlags flags, TileIndex start_tile, Transport
 				break;
 			}
 		}
-		if (!_cheats.crossing_tunnels.value && (IsTunnelInWay(end_tile, start_z) || IsDiagonalTunnelInWay(end_tile, start_z, TRACK_BIT_ALL))) {
+		if (!_cheats.crossing_tunnels.value && IsTunnelInWay(end_tile, start_z)) {
 			_build_tunnel_endtile = end_tile;
 			return CommandCost(STR_ERROR_ANOTHER_TUNNEL_IN_THE_WAY);
 		}
 		tiles++;
-	}
-	if (!_cheats.crossing_tunnels.value && (IsDiagonalTunnelInWay(start_tile, start_z, TRACK_BIT_ALL) || IsDiagonalTunnelInWay(end_tile, start_z, TRACK_BIT_ALL))) {
-		_build_tunnel_endtile = end_tile;
-		return CommandCost(STR_ERROR_ANOTHER_TUNNEL_IN_THE_WAY);
 	}
 	/* The cost of the digging. */
 	CommandCost cost(ExpensesType::Construction);
@@ -1262,281 +1257,6 @@ CommandCost CmdBuildTunnel(DoCommandFlags flags, TileIndex start_tile, Transport
 			UpdateRoadCachedOneWayStatesAroundTile(end_tile);
 		}
 		DirtyCompanyInfrastructureWindows(company);
-	}
-
-	return cost;
-}
-
-/**
- * Check whether a diagonal tunnel portal track can be built on a tile.
- * The slope and height of the tile must already have been checked by the caller.
- * @param flags Command flags.
- * @param tile Portal tile.
- * @param track Portal track.
- * @param height Height level of the tunnel.
- * @param[out] existing Set to true if the tile is already a diagonal tunnel portal tile.
- * @return Cost of clearing the tile, or an error.
- */
-static CommandCost CheckDiagonalTunnelPortalTile(DoCommandFlags flags, TileIndex tile, Track track, int height, bool &existing)
-{
-	existing = false;
-
-	if (!_cheats.crossing_tunnels.value && (IsTunnelInWay(tile, height) || IsDiagonalTunnelInWay(tile, height, TRACK_BIT_ALL))) {
-		return CommandCost(STR_ERROR_ANOTHER_TUNNEL_IN_THE_WAY);
-	}
-
-	if (IsDiagonalTunnelPortalTile(tile)) {
-		CommandCost ret = CheckTileOwnership(tile);
-		if (ret.Failed()) return ret;
-		if (HasTrack(tile, track)) return CommandCost(STR_ERROR_ALREADY_BUILT);
-		if (HasSignals(tile)) return CommandCost(STR_ERROR_MUST_REMOVE_SIGNALS_FIRST);
-		existing = true;
-		return CommandCost(ExpensesType::Construction);
-	}
-
-	if (HasTileWaterGround(tile)) return CommandCost(STR_ERROR_CAN_T_BUILD_ON_WATER);
-
-	return Command<Commands::LandscapeClear>::Do(flags, tile);
-}
-
-/**
- * Build a diagonal tunnel portal track on a tile.
- * @param tile Portal tile.
- * @param track Portal track.
- * @param railtype Rail type.
- * @param owner Owner.
- * @param existing Whether the tile is already a diagonal tunnel portal tile.
- */
-static void MakeDiagonalTunnelPortalTrack(TileIndex tile, Track track, RailType railtype, Owner owner, bool existing)
-{
-	const TrackBits trackbit = TrackToTrackBits(track);
-	if (existing) {
-		const TrackBits bits = GetTrackBits(tile);
-		assert((bits & trackbit) == 0);
-		if (trackbit & TRACK_BIT_RT_1) {
-			SetSecondaryRailType(tile, GetRailType(tile));
-			SetRailType(tile, railtype);
-		} else {
-			SetSecondaryRailType(tile, railtype);
-		}
-		SetTrackBits(tile, bits | trackbit);
-	} else {
-		MakeRailNormal(tile, owner, trackbit, railtype);
-		SetDiagonalTunnelPortal(tile, true);
-	}
-}
-
-/**
- * Build a diagonal tunnel.
- * A diagonal tunnel runs along the half tiles of the upper/lower or left/right tracks.
- * The start tile must have a slope with exactly one corner raised, the tunnel leads into the hill towards the raised corner.
- * @param flags type of operation
- * @param start_tile start tile of tunnel
- * @param track portal track of the start tile, this must be one of the two track pieces adjacent to the raised corner
- * @param railtype rail type
- * @return the cost of this operation or an error
- */
-CommandCost CmdBuildDiagonalTunnel(DoCommandFlags flags, TileIndex start_tile, Track track, RailType railtype)
-{
-	_build_tunnel_endtile = INVALID_TILE;
-
-	if (!ValParamRailType(railtype)) return CMD_ERROR;
-	if (!IsValidTrack(track) || IsDiagonalTrack(track)) return CMD_ERROR;
-	if (!Company::IsValidID(_current_company)) return CMD_ERROR;
-	const CompanyID company = _current_company;
-
-	auto [start_tileh, start_z] = GetTileSlopeZ(start_tile);
-	const Direction dir = GetDiagonalTunnelDirectionFromSlope(start_tileh);
-	if (dir == Direction::Invalid || !HasTrack(GetDiagonalTunnelPortalTrackBits(dir), track)) return CommandCost(STR_ERROR_SITE_UNSUITABLE_FOR_DIAGONAL_TUNNEL);
-
-	const Direction end_dir = ReverseDir(dir);
-	const int height = start_z;
-
-	bool start_existing;
-	CommandCost ret = CheckDiagonalTunnelPortalTile(flags, start_tile, track, height, start_existing);
-	if (ret.Failed()) return ret;
-
-	/* XXX - do NOT change 'ret' in the loop, as it is used as the price
-	 * for the clearing of the entrance of the tunnel. */
-	CommandCost cost(ExpensesType::Construction);
-	cost.AddCost(ret.GetCost());
-
-	auto contains = [](const std::array<TileIndex, 3> &corners, TileIndex corner) -> bool {
-		return std::find(corners.begin(), corners.end(), corner) != corners.end();
-	};
-
-	/* Walk along the line of the tunnel.
-	 * Each successive half tile shares an edge with the previous one, and adds one new corner.
-	 * The corners of the half tiles which the tunnel passes underneath must be higher than the tunnel,
-	 * except for those which are shared with the portal tiles.
-	 * The first new corner which is at the height of the tunnel indicates that the following half tile is the far portal. */
-	TileIndex tile = start_tile;
-	Track cur_track = track;
-	uint half_tiles = 0;
-	TileIndex end_tile = INVALID_TILE;
-	Track end_track = INVALID_TRACK;
-	TileIndex end_raised_corner = INVALID_TILE;
-	TileIndex end_low_corner = INVALID_TILE;
-	while (true) {
-		auto [next_tile, next_track] = GetNextDiagonalTunnelHalfTile(tile, cur_track, dir);
-		if (!IsValidTile(next_tile)) return CommandCost(STR_ERROR_TUNNEL_THROUGH_MAP_BORDER);
-
-		const std::array<TileIndex, 3> cur_corners = GetHalfTileTriangleCorners(tile, cur_track);
-		const std::array<TileIndex, 3> next_corners = GetHalfTileTriangleCorners(next_tile, next_track);
-
-		if (tile != start_tile) {
-			/* The previous half tile is a part of the tunnel, the next half tile is the end portal if the new corner of the previous half tile is at the tunnel height. */
-			if (end_low_corner != INVALID_TILE) {
-				end_tile = next_tile;
-				end_track = next_track;
-				for (TileIndex corner : cur_corners) {
-					if (corner != end_low_corner && contains(next_corners, corner)) end_raised_corner = corner;
-				}
-				break;
-			}
-		}
-
-		/* The next half tile is a part of the tunnel */
-		_build_tunnel_endtile = next_tile;
-		half_tiles++;
-
-		TileIndex new_corner = INVALID_TILE;
-		for (TileIndex corner : next_corners) {
-			if (!contains(cur_corners, corner)) new_corner = corner;
-		}
-		assert(new_corner != INVALID_TILE);
-		const int new_corner_height = TileHeight(new_corner);
-		if (new_corner_height < height) return CommandCost(STR_ERROR_DIAGONAL_TUNNEL_EMERGES);
-		if (new_corner_height == height) end_low_corner = new_corner;
-
-		if (!_cheats.crossing_tunnels.value) {
-			if (IsTunnelInWay(next_tile, height) || IsDiagonalTunnelInWay(next_tile, height, TrackToTrackBits(next_track))) {
-				return CommandCost(STR_ERROR_ANOTHER_TUNNEL_IN_THE_WAY);
-			}
-			if ((IsTunnelTile(next_tile) || IsDiagonalTunnelPortalTile(next_tile)) && GetTileZ(next_tile) == height) {
-				return CommandCost(STR_ERROR_ANOTHER_TUNNEL_IN_THE_WAY);
-			}
-		}
-
-		tile = next_tile;
-		cur_track = next_track;
-	}
-
-	/* The cost of the digging. */
-	int tiles_coef = 3;
-	int tiles_bump = 25;
-	for (uint i = 1; i <= half_tiles; i++) {
-		if (i == static_cast<uint>(tiles_bump)) {
-			tiles_coef++;
-			tiles_bump *= 2;
-		}
-
-		cost.AddCost(_price[Price::BuildTunnel]);
-		cost.AddCost(cost.GetCost() >> tiles_coef); // add a multiplier for longer tunnels
-	}
-
-	/* Add the cost of the entrance */
-	cost.AddCost(_price[Price::BuildTunnel]);
-
-	/* if the command fails from here on we want the end tile to be highlighted */
-	_build_tunnel_endtile = end_tile;
-
-	if (half_tiles > _settings_game.construction.max_tunnel_length) return CommandCost(STR_ERROR_TUNNEL_TOO_LONG);
-
-	/* The raised corner of the end tile must be exactly one level above the tunnel */
-	const Slope end_tileh_required = GetDiagonalTunnelSlopeFromDirection(end_dir);
-	if (end_raised_corner == INVALID_TILE || static_cast<int>(TileHeight(end_raised_corner)) != height + 1) return CommandCost(STR_ERROR_UNABLE_TO_EXCAVATE_LAND);
-
-	/* Determine which other corners of the end tile need to be raised or lowered */
-	Slope end_lower = SLOPE_FLAT;
-	Slope end_raise = SLOPE_FLAT;
-	{
-		auto check_corner = [&](Slope corner_slope, TileIndex corner) -> bool {
-			const int corner_height = TileHeight(corner);
-			if (corner_slope == end_tileh_required) {
-				if (corner != end_raised_corner) return false;
-				return true;
-			}
-			if (corner_height == height + 1) {
-				end_lower |= corner_slope;
-			} else if (corner_height == height - 1) {
-				end_raise |= corner_slope;
-			} else if (corner_height != height) {
-				return false;
-			}
-			return true;
-		};
-		if (!check_corner(SLOPE_N, end_tile) || !check_corner(SLOPE_W, end_tile + TileDiffXY(1, 0)) ||
-				!check_corner(SLOPE_S, end_tile + TileDiffXY(1, 1)) || !check_corner(SLOPE_E, end_tile + TileDiffXY(0, 1))) {
-			return CommandCost(STR_ERROR_UNABLE_TO_EXCAVATE_LAND);
-		}
-	}
-
-	bool end_existing;
-	if (IsDiagonalTunnelPortalTile(end_tile)) {
-		/* An existing portal tile can't be terraformed */
-		if (end_lower != SLOPE_FLAT || end_raise != SLOPE_FLAT) return CommandCost(STR_ERROR_UNABLE_TO_EXCAVATE_LAND);
-	}
-	ret = CheckDiagonalTunnelPortalTile(flags, end_tile, end_track, height, end_existing);
-	if (ret.Failed()) {
-		if (ret.GetErrorMessage() == STR_ERROR_ALREADY_BUILT || ret.GetErrorMessage() == STR_ERROR_ANOTHER_TUNNEL_IN_THE_WAY) return ret;
-		return CommandCost(STR_ERROR_UNABLE_TO_EXCAVATE_LAND);
-	}
-	cost.AddCost(ret.GetCost());
-
-	/* Terraform the end tile if necessary */
-	if (end_lower != SLOPE_FLAT || end_raise != SLOPE_FLAT) {
-		/* Mark the tile as already cleared for the terraform command.
-		 * Do this for all tiles (like trees), not only objects. */
-		ClearedObjectArea *coa = FindClearedObject(end_tile);
-		if (coa == nullptr) {
-			coa = &_cleared_object_areas.emplace_back(end_tile, TileArea(end_tile, 1, 1));
-		}
-
-		/* Hide the tile from the terraforming command */
-		TileIndex old_first_tile = coa->first_tile;
-		coa->first_tile = INVALID_TILE;
-
-		/* See CmdBuildTunnel for why the index is used instead of the pointer */
-		ClearedObjectArea *begin = _cleared_object_areas.data();
-		assert(coa >= begin && coa < begin + _cleared_object_areas.size());
-		size_t coa_index = coa - begin;
-		assert(coa_index < UINT_MAX);
-		coa = nullptr;
-
-		for (bool raise : { false, true }) {
-			const Slope corners = raise ? end_raise : end_lower;
-			if (corners == SLOPE_FLAT) continue;
-			ret = Command<Commands::TerraformLand>::Do(flags, end_tile, corners, raise);
-			if (ret.Failed()) break;
-			cost.AddCost(ret.GetCost());
-		}
-		_cleared_object_areas[(uint)coa_index].first_tile = old_first_tile;
-		if (ret.Failed()) return CommandCost(STR_ERROR_UNABLE_TO_EXCAVATE_LAND);
-	}
-	cost.AddCost(_price[Price::BuildTunnel]);
-
-	/* Pay for the rail in the tunnel including entrances */
-	cost.AddCost((half_tiles + 2) * RailBuildCost(railtype));
-
-	if (flags.Test(DoCommandFlag::Execute)) {
-		Company *c = Company::Get(company);
-
-		MakeDiagonalTunnelPortalTrack(start_tile, track, railtype, company, start_existing);
-		MakeDiagonalTunnelPortalTrack(end_tile, end_track, railtype, company, end_existing);
-
-		const DiagonalTunnel *dt = AddDiagonalTunnel(start_tile, track);
-		assert(dt != nullptr);
-		assert(dt->IsEnd(end_tile, end_track));
-
-		c->infrastructure.rail[railtype] += 2 + GetDiagonalTunnelInfrastructureCount(dt);
-		DirtyCompanyInfrastructureWindows(company);
-
-		for (auto [t, tr] : { std::make_pair(start_tile, track), std::make_pair(end_tile, end_track) }) {
-			MarkTileDirtyByTile(t);
-			AddTrackToSignalBuffer(t, tr, company);
-			YapfNotifyTrackLayoutChange(t, tr);
-		}
 	}
 
 	return cost;

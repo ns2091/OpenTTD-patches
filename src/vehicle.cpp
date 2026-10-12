@@ -423,7 +423,7 @@ void Vehicle::UpdateIsDrawn()
 {
 	bool drawn = !(HasBit(this->subtype, GVSF_VIRTUAL)) && (!this->vehstatus.Test(VehState::Hidden) ||
 			(IsTransparencySet(TransparencyOption::Tunnels) &&
-				((this->type == VehicleType::Train && (Train::From(this)->track == TRACK_BIT_WORMHOLE || Train::From(this)->gv_flags.Test(GroundVehicleFlag::DiagonalTunnel))) ||
+				((this->type == VehicleType::Train && Train::From(this)->track == TRACK_BIT_WORMHOLE) ||
 				(this->type == VehicleType::Road && RoadVehicle::From(this)->state == RVSB_WORMHOLE))));
 
 	AssignBit(this->vcache.cached_veh_flags, VCF_IS_DRAWN, drawn);
@@ -4654,7 +4654,6 @@ void DumpVehicleFlagsGeneric(const Vehicle *v, T dump, U dump_header)
 		dump('d', "GoingDown",              gv_flags.Test(GroundVehicleFlag::GoingDown));
 		dump('s', "SuppressImplicitOrders", gv_flags.Test(GroundVehicleFlag::SuppressImplicitOrders));
 		dump('c', "Chunnel",                gv_flags.Test(GroundVehicleFlag::Chunnel));
-		dump('D', "DiagonalTunnel",         gv_flags.Test(GroundVehicleFlag::DiagonalTunnel));
 	}
 	if (v->type == VehicleType::Train) {
 		const Train *t = Train::From(v);

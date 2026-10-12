@@ -14,7 +14,6 @@
 #include "../load_check.h"
 #include "../tunnelbridge_map.h"
 #include "../tunnelbridge.h"
-#include "../diagonal_tunnel.h"
 #include "../station_base.h"
 #include "../settings_func.h"
 #include "../strings_func.h"
@@ -60,8 +59,6 @@ void AfterLoadCompanyStats()
 						}
 					}
 					c->infrastructure.rail[GetRailType(tile)] += pieces;
-
-					if (IsPlainRail(tile) && IsDiagonalTunnelPortal(tile)) AddDiagonalTunnelPortalTileInfrastructureCounts(tile, c, 1);
 
 					if (HasSignals(tile)) c->infrastructure.signal += CountBits(GetPresentSignals(tile));
 				}

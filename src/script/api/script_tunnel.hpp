@@ -11,7 +11,6 @@
 #define SCRIPT_TUNNEL_HPP
 
 #include "script_vehicle.hpp"
-#include "script_rail.hpp"
 
 /**
  * Class that handles all tunnel related functions.
@@ -101,49 +100,6 @@ public:
 	 * @game @note Building a tunnel as deity (ScriptCompanyMode::IsDeity()) results in a tunnel owned by towns.
 	 */
 	static bool BuildTunnel(ScriptVehicle::VehicleType vehicle_type, TileIndex start);
-
-	/**
-	 * Check whether the tile is an entrance to one or two diagonal tunnels.
-	 * Diagonal tunnels are rail tunnels which run along the half tile track pieces (ScriptRail::RAILTRACK_NW_NE,
-	 *  ScriptRail::RAILTRACK_SW_SE, ScriptRail::RAILTRACK_NW_SW and ScriptRail::RAILTRACK_NE_SE), i.e. diagonally with respect to the tile grid.
-	 * The entrance tile of a diagonal tunnel is a rail tile, each track of which is the entrance of a separate diagonal tunnel.
-	 * @param tile The tile to check.
-	 * @pre ScriptMap::IsValidTile(tile).
-	 * @return True if and only if the tile is the entrance of one or two diagonal tunnels.
-	 * @note This is a non-standard addition to the script API.
-	 */
-	static bool IsDiagonalTunnelTile(TileIndex tile);
-
-	/**
-	 * Get the tile at the other end of a diagonal tunnel.
-	 * @param tile The tile that is an entrance to a diagonal tunnel.
-	 * @param track The entrance track of the diagonal tunnel on tile.
-	 * @pre IsDiagonalTunnelTile(tile).
-	 * @return The tile at the other end of the diagonal tunnel, or ScriptMap::TILE_INVALID if there is no such tunnel.
-	 * @note This is a non-standard addition to the script API.
-	 */
-	static TileIndex GetOtherDiagonalTunnelEnd(TileIndex tile, ScriptRail::RailTrack track);
-
-	/**
-	 * Builds a diagonal rail tunnel starting at start, using the current rail type.
-	 * The start tile must have a slope with exactly one corner raised. The tunnel leads into the hill towards the raised corner,
-	 *  starting from one of the two half tile track pieces which are adjacent to the raised corner.
-	 * The other end of the tunnel is where the ground along the line of the tunnel descends back to the level of the start tile.
-	 * The entrance tracks of diagonal tunnels can be removed using ScriptRail::RemoveRailTrack, this removes the whole tunnel.
-	 * @param start Where to start the tunnel.
-	 * @param track The entrance track of the tunnel on the start tile.
-	 * @pre ScriptMap::IsValidTile(start).
-	 * @pre track is one of ScriptRail::RAILTRACK_NW_NE, ScriptRail::RAILTRACK_SW_SE, ScriptRail::RAILTRACK_NW_SW or ScriptRail::RAILTRACK_NE_SE.
-	 * @pre ScriptRail::IsRailTypeAvailable(ScriptRail::GetCurrentRailType()).
-	 * @pre ScriptCompanyMode::IsValid().
-	 * @exception ScriptError::ERR_AREA_NOT_CLEAR
-	 * @exception ScriptTunnel::ERR_TUNNEL_CANNOT_BUILD_ON_WATER
-	 * @exception ScriptTunnel::ERR_TUNNEL_ANOTHER_TUNNEL_IN_THE_WAY
-	 * @exception ScriptTunnel::ERR_TUNNEL_END_SITE_UNSUITABLE
-	 * @return Whether the tunnel has been/can be build or not.
-	 * @note This is a non-standard addition to the script API.
-	 */
-	static bool BuildDiagonalTunnel(TileIndex start, ScriptRail::RailTrack track);
 
 	/**
 	 * Remove the tunnel whose entrance is located at tile.

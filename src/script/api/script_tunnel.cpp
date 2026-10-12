@@ -15,7 +15,6 @@
 #include "../../tunnel_map.h"
 #include "../../tunnelbridge_cmd.h"
 #include "../../road_cmd.h"
-#include "../../diagonal_tunnel.h"
 
 #include "../../safeguards.h"
 
@@ -124,43 +123,6 @@ static void _DoCommandReturnBuildTunnel1(class ScriptInstance &instance)
 	DiagDirection dir_2 = ::ReverseDiagDir(dir_1);
 
 	return ScriptObject::Command<Commands::BuildRoad>::Do(end + ::TileOffsByDiagDir(dir_2), ::DiagDirToRoadBits(dir_1), ScriptObject::GetRoadType(), {}, TownID::Invalid(), BuildRoadFlags::NoCustomBridgeHeads);
-}
-
-/**
- * Convert a script rail track to a track, if it is suitable for a diagonal tunnel.
- * @param track Script rail track.
- * @return Track, or INVALID_TRACK.
- */
-static Track GetDiagonalTunnelTrackFromScriptRailTrack(ScriptRail::RailTrack track)
-{
-	const uint bits = static_cast<uint>(track);
-	if (bits == 0 || !HasExactlyOneBit(bits) || (bits & ~static_cast<uint>(TRACK_BIT_HORZ | TRACK_BIT_VERT)) != 0) return INVALID_TRACK;
-	return ::FindFirstTrack(static_cast<TrackBits>(bits));
-}
-
-/* static */ bool ScriptTunnel::IsDiagonalTunnelTile(TileIndex tile)
-{
-	if (!::IsValidTile(tile)) return false;
-	return ::IsDiagonalTunnelPortalTile(tile);
-}
-
-/* static */ TileIndex ScriptTunnel::GetOtherDiagonalTunnelEnd(TileIndex tile, ScriptRail::RailTrack track)
-{
-	if (!IsDiagonalTunnelTile(tile)) return INVALID_TILE;
-	const Track t = GetDiagonalTunnelTrackFromScriptRailTrack(track);
-	if (t == INVALID_TRACK) return INVALID_TILE;
-	return ::GetOtherDiagonalTunnelEnd(tile, t);
-}
-
-/* static */ bool ScriptTunnel::BuildDiagonalTunnel(TileIndex start, ScriptRail::RailTrack track)
-{
-	EnforceCompanyModeValid(false);
-	EnforcePrecondition(false, ::IsValidTile(start));
-	const Track t = GetDiagonalTunnelTrackFromScriptRailTrack(track);
-	EnforcePrecondition(false, t != INVALID_TRACK);
-	EnforcePrecondition(false, ScriptRail::IsRailTypeAvailable(ScriptRail::GetCurrentRailType()));
-
-	return ScriptObject::Command<Commands::BuildDiagonalTunnel>::Do(start, t, static_cast<::RailType>(ScriptRail::GetCurrentRailType()));
 }
 
 /* static */ bool ScriptTunnel::RemoveTunnel(TileIndex tile)

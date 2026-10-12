@@ -64,7 +64,6 @@
 #include "elrail_func.h"
 #include "company_base.h"
 #include "newgrf_railtype.h"
-#include "diagonal_tunnel.h"
 
 #include "table/elrail_data.h"
 
@@ -241,10 +240,7 @@ static inline SpriteID GetPylonBase(TileIndex tile, RailType rt, TileContext con
  */
 static void AdjustTileh(TileIndex tile, Slope *tileh)
 {
-	if (IsDiagonalTunnelPortalTile(tile)) {
-		/* The portal tracks of diagonal tunnels are flat */
-		*tileh = SLOPE_FLAT;
-	} else if (IsTileType(tile, TileType::TunnelBridge)) {
+	if (IsTileType(tile, TileType::TunnelBridge)) {
 		if (IsTunnel(tile)) {
 			*tileh = SLOPE_STEEP; // XXX - Hack to make tunnel entrances to always have a pylon
 		} else if (IsRailCustomBridgeHeadTile(tile)) {
@@ -446,7 +442,7 @@ static void DrawRailCatenaryRailway(const TileInfo *ti)
 		if (IsTileType(neighbour, TileType::Station) || IsTileType(neighbour, TileType::Road)) tileh[TileSource::Neighbour] = SLOPE_FLAT;
 
 		/* Read the foundations if they are present, and adjust the tileh */
-		if (track_config[TileSource::Neighbour] != TRACK_BIT_NONE && IsTileType(neighbour, TileType::Railway) && !IsDiagonalTunnelPortalTile(neighbour) && HasRailCatenary(GetTileRailTypeByEntryDir(neighbour, i))) foundation = GetRailFoundation(tileh[TileSource::Neighbour], track_config[TileSource::Neighbour]);
+		if (track_config[TileSource::Neighbour] != TRACK_BIT_NONE && IsTileType(neighbour, TileType::Railway) && HasRailCatenary(GetTileRailTypeByEntryDir(neighbour, i))) foundation = GetRailFoundation(tileh[TileSource::Neighbour], track_config[TileSource::Neighbour]);
 		if (IsBridgeTile(neighbour)) {
 			foundation = GetBridgeFoundation(tileh[TileSource::Neighbour], DiagDirToAxis(GetTunnelBridgeDirection(neighbour)));
 		}
