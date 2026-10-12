@@ -202,3 +202,6 @@ STR_ERROR_SITE_UNSUITABLE_FOR_DIAGONAL_TUNNEL                   :{WHITE}斜面�
 STR_ERROR_DIAGONAL_TUNNEL_EMERGES                               :{WHITE}適切な出口に達する前にトンネルが地上に出てしまいます
 STR_ERROR_NOT_POSSIBLE_ON_DIAGONAL_TUNNEL_PORTAL                :{WHITE}斜めトンネルの入り口では実行できません
 STR_LAI_RAIL_DESCRIPTION_DIAGONAL_TUNNEL                        :鉄道トンネル(斜め)
+
+STR_LOCAL_AUTHORITY_AUTO_FUND_BUILDINGS_BUTTON                  :{BLACK}自動出資
+STR_LOCAL_AUTHORITY_AUTO_FUND_BUILDINGS_TOOLTIP                 :{BLACK}解除するまで、この街の市街地開発への出資を繰り返し行います{}出資の期間が終了するたびに、資金が足りていれば通常の費用で自動的に再び出資します

@@ -150,6 +150,7 @@ enum SlXvFeatureIndex {
 	XSLFI_ERNC_CHUNK,                             ///< ERNC chunk
 	XSLFI_STATION_CARGO_TRUNCATE,                 ///< Station cargo truncation setting
 	XSLFI_DIAGONAL_TUNNELS,                       ///< Diagonal rail tunnels
+	XSLFI_TOWN_AUTO_FUND_BUILDINGS,               ///< Automatic renewal of town fund buildings action
 
 	XSLFI_SCRIPT_INT64,                           ///< See: SLV_SCRIPT_INT64
 	XSLFI_U64_TICK_COUNTER,                       ///< See: SLV_U64_TICK_COUNTER
