@@ -3478,7 +3478,9 @@ static void CheckNextTrainTile(Train *moving_front)
 
 	/* Exit if we are on a station tile and are going to stop. */
 	if (HasStationTileRail(moving_front->tile) && consist->current_order.ShouldStopAtStation(consist, GetStationIndex(moving_front->tile), IsRailWaypoint(moving_front->tile))) return;
-	if (IsTrainOnTunnelBridgeStationPlatform(moving_front) && consist->current_order.ShouldStopAtStation(consist, GetTunnelBridgeStationID(moving_front->tile), false)) return;
+	/* Exit if we are inside a tunnel/bridge with a platform, and are going to stop there. */
+	if (moving_front->track == TRACK_BIT_WORMHOLE && IsTunnelBridgeStationTile(moving_front->tile) &&
+			consist->current_order.ShouldStopAtStation(consist, GetTunnelBridgeStationID(moving_front->tile), false)) return;
 
 	switch (consist->current_order.GetType()) {
 		/* Exit if we reached our destination depot. */
@@ -6340,7 +6342,7 @@ bool TrainController(Train *v, Vehicle *nomove, bool reverse)
 				DecreaseReverseDistance(v);
 				if (v->lookahead != nullptr) AdvanceLookAheadPosition(v);
 				if (v->flags.Test(VehicleRailFlag::PendingSpeedRestriction)) DecrementPendingSpeedRestrictions(v);
-				if (IsTunnelBridgeStation(v->tile)) {
+				if (IsTrainOnTunnelBridgeStationPlatform(v)) {
 					/* Station platform inside the tunnel/bridge */
 					const StationID station_id = GetTunnelBridgeStationID(v->tile);
 					if (TrainCheckStationStopLocation(v, v->tile, station_id, false, gp.x, gp.y).Test(VehicleEnterTileState::EnteredStation)) {

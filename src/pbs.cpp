@@ -584,7 +584,8 @@ static PBSTileInfo FollowReservation(Owner o, RailTypes rts, TileIndex tile, Tra
 			}
 			if ((ft.is_tunnel || ft.is_bridge) && IsTunnelBridgeStationTile(tile)) {
 				/* Station platform inside the tunnel/bridge which has just been passed through */
-				lookahead->AddStation(ft.tiles_skipped, GetTunnelBridgeStationID(tile), IsBridge(tile) ? GetBridgeHeight(tile) : z, TRLISF_TUNNEL_BRIDGE_PLATFORM);
+				lookahead->AddStation(GetTunnelBridgeStationPlatformLength(tile), GetTunnelBridgeStationID(tile), IsBridge(tile) ? GetBridgeHeight(tile) : z, TRLISF_TUNNEL_BRIDGE_PLATFORM,
+						GetTunnelBridgeStationPlatformDistanceFromEnd(GetOtherTunnelBridgeEnd(tile)));
 			}
 			check_direction(TrackdirToDirection(trackdir), (ft.tiles_skipped * TILE_SIZE) + (ft.diagonal_tunnel_half_tiles * (TILE_SIZE / 2)), tile);
 			if (IsTileType(tile, TileType::TunnelBridge) && TrackdirEntersTunnelBridge(tile, trackdir)) {

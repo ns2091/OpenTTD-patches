@@ -155,7 +155,7 @@ void AfterLoadCompanyStats()
 							AddRailTunnelBridgeInfrastructure(tile, other_end);
 							if (IsTunnelBridgeStation(tile)) {
 								c = Company::GetIfValid(GetTileOwner(tile));
-								if (c != nullptr) c->infrastructure.station += GetTunnelBridgeLength(tile, other_end);
+								if (c != nullptr) c->infrastructure.station += GetTunnelBridgeStationPlatformLength(tile);
 							}
 							break;
 

@@ -92,7 +92,7 @@ The TT-Forums thread for this patchpack can be found [here](https://www.tt-forum
 * Custom bridge heads.
 * [Chunnels (tunnels under bodies of water)](https://www.tt-forums.net/viewtopic.php?f=33&t=41775). Off by default.
 * Diagonal rail tunnels, which run along the half tile track pieces. Built using the tunnel tool on tiles with one corner raised.
-* Station platforms inside rail tunnels and on rail bridges. Built by clicking on the end of a tunnel or bridge with the rail station tool.
+* Station platforms inside rail tunnels and on rail bridges, covering the whole or a part of the tunnel/bridge. Built by clicking on the end of a tunnel or bridge with the rail station tool, or by dragging along it with the "Tunnel/bridge" button of the station picker enabled. The pathfinder treats the platform as if there were block signals before and after it.
 * Allow building rail stations under bridges, subject to height/clearance and bridge pillar limitations.
 * Add setting to allow placing NewGRF rail stations under bridges, when the GRF doesn't specify whether or not it can be placed under bridges.
 * Add setting to allow placing all NewGRF objects under bridges, even when it would not otherwise be allowed by the GRF.

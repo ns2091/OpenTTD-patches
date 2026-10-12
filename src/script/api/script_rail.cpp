@@ -182,7 +182,19 @@
 	EnforcePrecondition(false, station_id == ScriptStation::STATION_NEW || station_id == ScriptStation::STATION_JOIN_ADJACENT || ScriptStation::IsValidStation(station_id));
 
 	bool adjacent = station_id != ScriptStation::STATION_JOIN_ADJACENT;
-	return ScriptObject::Command<Commands::BuildTunnelBridgeStation>::Do(tile, ScriptStation::IsValidStation(station_id) ? station_id : StationID::Invalid(), adjacent);
+	return ScriptObject::Command<Commands::BuildTunnelBridgeStation>::Do(tile, INVALID_TILE, INVALID_TILE, ScriptStation::IsValidStation(station_id) ? station_id : StationID::Invalid(), adjacent);
+}
+
+/* static */ bool ScriptRail::BuildTunnelBridgeStationPart(TileIndex tile, TileIndex platform_start, TileIndex platform_end, StationID station_id)
+{
+	EnforceCompanyModeValid(false);
+	EnforcePrecondition(false, ::IsValidTile(tile));
+	EnforcePrecondition(false, ::IsValidTile(platform_start));
+	EnforcePrecondition(false, ::IsValidTile(platform_end));
+	EnforcePrecondition(false, station_id == ScriptStation::STATION_NEW || station_id == ScriptStation::STATION_JOIN_ADJACENT || ScriptStation::IsValidStation(station_id));
+
+	bool adjacent = station_id != ScriptStation::STATION_JOIN_ADJACENT;
+	return ScriptObject::Command<Commands::BuildTunnelBridgeStation>::Do(tile, platform_start, platform_end, ScriptStation::IsValidStation(station_id) ? station_id : StationID::Invalid(), adjacent);
 }
 
 /* static */ bool ScriptRail::RemoveTunnelBridgeStation(TileIndex tile)
@@ -191,13 +203,37 @@
 	EnforcePrecondition(false, ::IsValidTile(tile));
 	EnforcePrecondition(false, ::IsTunnelBridgeStationTile(tile));
 
-	return ScriptObject::Command<Commands::RemoveTunnelBridgeStation>::Do(tile);
+	return ScriptObject::Command<Commands::RemoveTunnelBridgeStation>::Do(tile, INVALID_TILE, INVALID_TILE);
+}
+
+/* static */ bool ScriptRail::RemoveTunnelBridgeStationPart(TileIndex tile, TileIndex remove_start, TileIndex remove_end)
+{
+	EnforceCompanyModeValid(false);
+	EnforcePrecondition(false, ::IsValidTile(tile));
+	EnforcePrecondition(false, ::IsTunnelBridgeStationTile(tile));
+	EnforcePrecondition(false, ::IsValidTile(remove_start));
+	EnforcePrecondition(false, ::IsValidTile(remove_end));
+
+	return ScriptObject::Command<Commands::RemoveTunnelBridgeStation>::Do(tile, remove_start, remove_end);
 }
 
 /* static */ bool ScriptRail::IsTunnelBridgeStationTile(TileIndex tile)
 {
 	if (!::IsValidTile(tile)) return false;
 	return ::IsTunnelBridgeStationTile(tile);
+}
+
+/* static */ TileIndex ScriptRail::GetTunnelBridgeStationPlatformStartTile(TileIndex tile)
+{
+	if (!IsTunnelBridgeStationTile(tile)) return INVALID_TILE;
+	return tile + ::TileOffsByDiagDir(::GetTunnelBridgeDirection(tile)) * static_cast<int>(::GetTunnelBridgeStationPlatformDistanceFromEnd(tile) + 1);
+}
+
+/* static */ TileIndex ScriptRail::GetTunnelBridgeStationPlatformEndTile(TileIndex tile)
+{
+	if (!IsTunnelBridgeStationTile(tile)) return INVALID_TILE;
+	const TileIndex other_end = ::GetOtherTunnelBridgeEnd(tile);
+	return other_end + ::TileOffsByDiagDir(::GetTunnelBridgeDirection(other_end)) * static_cast<int>(::GetTunnelBridgeStationPlatformDistanceFromEnd(other_end) + 1);
 }
 
 /* static */ bool ScriptRail::BuildNewGRFRailStation(TileIndex tile, RailTrack direction, SQInteger num_platforms, SQInteger platform_length, StationID station_id, CargoType cargo_type, IndustryType source_industry, IndustryType goal_industry, SQInteger distance, bool source_station)

@@ -13,13 +13,14 @@
 
 #include "../safeguards.h"
 
-/** Saved data of a tunnel/bridge station platform, the array index is the northern end tile of the tunnel/bridge. */
-struct TunnelBridgeStationStub {
-	StationID station = StationID::Invalid();
-};
-
+/**
+ * Saved data of a tunnel/bridge station platform, the array index is the northern end tile of the tunnel/bridge.
+ * Saves without the platform range (length 0) have platforms which cover the whole middle part of the tunnel/bridge.
+ */
 static const NamedSaveLoad _tunnel_bridge_station_desc[] = {
-	NSL("station", SLE_VAR(TunnelBridgeStationStub, station, SLE_UINT16)),
+	NSL("station", SLE_VAR(TunnelBridgeStationPlatform, station, SLE_UINT16)),
+	NSL("start",   SLE_CONDVAR_X(TunnelBridgeStationPlatform, start,  SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TUNNEL_BRIDGE_STATIONS, 2))),
+	NSL("length",  SLE_CONDVAR_X(TunnelBridgeStationPlatform, length, SLE_UINT16, SL_MIN_VERSION, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TUNNEL_BRIDGE_STATIONS, 2))),
 };
 
 static void Load_TBST()
@@ -28,9 +29,9 @@ static void Load_TBST()
 
 	int index;
 	while ((index = SlIterateArray()) != -1) {
-		TunnelBridgeStationStub stub{};
-		SlObjectLoadFiltered(&stub, slt);
-		InsertTunnelBridgeStationOnLoad(TileIndex(index), stub.station);
+		TunnelBridgeStationPlatform platform{};
+		SlObjectLoadFiltered(&platform, slt);
+		InsertTunnelBridgeStationOnLoad(TileIndex(index), platform);
 	}
 }
 
@@ -38,10 +39,10 @@ static void Save_TBST()
 {
 	SaveLoadTableData slt = SlTableHeader(_tunnel_bridge_station_desc);
 
-	IterateTunnelBridgeStations([&](TileIndex tile, StationID station) {
-		TunnelBridgeStationStub stub{ station };
+	IterateTunnelBridgeStations([&](TileIndex tile, const TunnelBridgeStationPlatform &platform) {
+		TunnelBridgeStationPlatform copy = platform;
 		SlSetArrayIndex(tile.base());
-		SlObjectSaveFiltered(&stub, slt);
+		SlObjectSaveFiltered(&copy, slt);
 	});
 }
 

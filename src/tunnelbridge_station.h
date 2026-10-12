@@ -8,12 +8,18 @@
 /**
  * @file tunnelbridge_station.h Stations whose platform is the inside of a rail tunnel or bridge.
  *
- * The whole middle part of a rail tunnel or bridge (excluding the two end tiles) can be made into a platform of a station.
+ * A contiguous part of the middle tiles of a rail tunnel or bridge (excluding the two end tiles) can be made into a platform of a station.
  * Trains stop and load/unload inside the wormhole of such a tunnel or bridge.
+ * Each tunnel or bridge can have at most one platform.
  *
  * Both end tiles of the tunnel/bridge have a flag bit set in the map (tunnels: m6 bit 2, bridges: m5 bit 4).
- * The station ID is stored in a side table keyed by the northern end tile, which is saved in its own chunk.
+ * The station ID and the platform range are stored in a side table keyed by the northern end tile, which is saved in its own chunk.
  * Each station has a (not saved) list of its tunnel/bridge platforms, which is rebuilt after loading.
+ *
+ * The middle tiles of a tunnel or bridge are identified by their offset from the northern end tile, the first middle tile has offset 1.
+ *
+ * Signals cannot be placed on tunnels and bridges with a platform.
+ * The pathfinder treats the platform as if there were block signals at its entrance and at its exit.
  */
 
 #ifndef TUNNELBRIDGE_STATION_H
@@ -31,6 +37,26 @@
 
 struct Train;
 struct Station;
+
+/** A station platform inside a tunnel or bridge. */
+struct TunnelBridgeStationPlatform {
+	StationID station = StationID::Invalid(); ///< The station.
+	uint16_t start = 0;                       ///< Offset of the first platform tile from the northern end tile of the tunnel/bridge.
+	uint16_t length = 0;                      ///< Number of platform tiles.
+
+	/**
+	 * Get the offset of the last platform tile from the northern end tile of the tunnel/bridge.
+	 * @return The offset of the last platform tile.
+	 */
+	inline uint Last() const { return this->start + this->length - 1; }
+
+	/**
+	 * Is the middle tile with the given offset from the northern end tile part of the platform?
+	 * @param offset The offset from the northern end tile.
+	 * @return true if the tile is part of the platform.
+	 */
+	inline bool ContainsOffset(uint offset) const { return offset >= this->start && offset <= this->Last(); }
+};
 
 /**
  * Is this end tile of a tunnel or bridge part of a rail tunnel/bridge whose middle part is a station platform?
@@ -82,25 +108,23 @@ inline TileIndex GetTunnelBridgeStationKey(TileIndex t)
 }
 
 /**
- * Get the area covered by a tunnel or bridge, including the end tiles.
+ * Get the offset of a tile from the northern end tile of a tunnel or bridge.
  * @param t One of the end tiles of the tunnel or bridge.
- * @return The tile area.
+ * @param tile The tile, which must be on the line of the tunnel or bridge.
+ * @return The offset, the first middle tile has offset 1.
  */
-inline TileArea GetTunnelBridgeStationArea(TileIndex t)
+inline uint GetTunnelBridgeTileOffset(TileIndex t, TileIndex tile)
 {
-	return TileArea(t, GetOtherTunnelBridgeEnd(t));
+	return DistanceManhattan(GetTunnelBridgeStationKey(t), tile);
 }
 
-/**
- * Get the platform length of a tunnel or bridge station platform, this is the length of the middle part of the tunnel/bridge.
- * @param t One of the end tiles of the tunnel or bridge.
- * @return The platform length in tiles.
- */
-inline uint GetTunnelBridgeStationPlatformLength(TileIndex t)
-{
-	return GetTunnelBridgeLength(t, GetOtherTunnelBridgeEnd(t));
-}
-
+const TunnelBridgeStationPlatform &GetTunnelBridgeStationPlatform(TileIndex t);
+TileIndex GetTunnelBridgeTileAtOffset(TileIndex t, uint offset);
+TileArea GetTunnelBridgeStationArea(TileIndex t);
+uint GetTunnelBridgeStationPlatformLength(TileIndex t);
+uint GetTunnelBridgeStationPlatformDistanceFromEnd(TileIndex end);
+bool IsTunnelBridgeStationPlatformTile(TileIndex t, TileIndex tile);
+bool IsTunnelBridgeStationSectionOccupied(TileIndex t, uint first, uint last, const Train *ignore);
 StationID GetTunnelBridgeStationID(TileIndex t);
 
 /**
@@ -114,18 +138,21 @@ inline StationID GetTunnelBridgeStationIDIfAny(TileIndex t)
 }
 
 bool IsTrainOnTunnelBridgeStationPlatform(const Train *v);
+bool IsTunnelBridgeStationPlatformOccupied(TileIndex t, const Train *ignore);
+bool IsTunnelBridgeStationExitSectionOccupied(TileIndex exit, const Train *ignore);
 StationID GetTrainVehicleStationID(const Train *v);
 void GetTunnelBridgeStationPlatformPosition(const Train *v, int *station_ahead, int *station_length);
 bool IsTunnelBridgeStationDestination(TileIndex tile, Trackdir td, StationID station);
 StationID GetTunnelBridgeStationOfReservationEnd(TileIndex tile, Trackdir td);
 
-void AddTunnelBridgeStation(TileIndex t, Station *st);
+void AddTunnelBridgeStation(TileIndex t, Station *st, uint start, uint length);
+void SetTunnelBridgeStationPlatformRange(TileIndex t, uint start, uint length);
 void RemoveTunnelBridgeStation(TileIndex t);
 void ClearTunnelBridgeStations();
-void InsertTunnelBridgeStationOnLoad(TileIndex key, StationID st);
+void InsertTunnelBridgeStationOnLoad(TileIndex key, const TunnelBridgeStationPlatform &platform);
 void RebuildTunnelBridgeStationCaches();
 size_t GetTunnelBridgeStationCount();
-void IterateTunnelBridgeStations(std::function<void(TileIndex, StationID)> handler);
+void IterateTunnelBridgeStations(std::function<void(TileIndex, const TunnelBridgeStationPlatform &)> handler);
 bool StationHasTunnelBridgePlatformInArea(const Station *st, int left, int top, int right, int bottom);
 TileArea GetRailStationAreaIncludingTunnelBridgePlatforms(const struct BaseStation *st, TileArea area);
 void ValidateTunnelBridgeStationCaches(std::function<void(std::string_view)> log);

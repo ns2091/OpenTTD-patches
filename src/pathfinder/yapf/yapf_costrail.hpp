@@ -546,6 +546,36 @@ public:
 		return cost;
 	}
 
+	/**
+	 * Calculate the cost of passing a virtual block signal at the entrance or the exit of a station platform inside a tunnel or bridge.
+	 * Signals cannot be placed on tunnels and bridges with a station platform, so the platform
+	 * is treated as if there were block signals at its entrance and at its exit.
+	 * @param n The current node.
+	 * @param is_red Whether the virtual signal is red, i.e. the part of the tunnel or bridge after it is occupied by another train.
+	 * @return The cost.
+	 */
+	int TunnelBridgeStationVirtualSignalCost(Node &n, bool is_red)
+	{
+		int cost = 0;
+		n.last_signal_type = SignalType::Block;
+
+		/* look-ahead cost, in the same way as for a real signal */
+		int look_ahead_cost = (n.num_signals_passed < this->sig_look_ahead_costs.size()) ? this->sig_look_ahead_costs[n.num_signals_passed] : 0;
+		if (!is_red) {
+			n.flags_u.flags_s.last_signal_was_red = false;
+			/* negative look-ahead red-signal penalties would cause problems later, so use them as positive penalties for green signal */
+			if (look_ahead_cost < 0) cost -= look_ahead_cost;
+		} else {
+			n.last_red_signal_type = SignalType::Block;
+			n.flags_u.flags_s.last_signal_was_red = true;
+			if (look_ahead_cost > 0) cost += look_ahead_cost;
+			if (n.num_signals_passed == 0) cost += Yapf().PfGetSettings().rail_firstred_penalty;
+		}
+
+		n.num_signals_passed++;
+		return cost;
+	}
+
 	inline int PlatformLengthPenalty(int platform_length)
 	{
 		int cost = 0;
@@ -627,6 +657,13 @@ public:
 		EndSegmentReasons end_segment_reason{};
 
 		TrackFollower follower_local{v, Yapf().GetCompatibleRailTypes()};
+
+		if (has_parent && !n.flags_u.flags_s.teleport && n.parent->segment->end_segment_reason.Test(EndSegmentReason::Station) &&
+				IsTunnelBridgeStationTile(prev.tile) && TrackdirExitsTunnelBridge(prev.tile, prev.td)) {
+			/* The parent segment passed through a station platform inside a tunnel or bridge, there is a virtual block signal at the exit of the platform.
+			 * This cost depends on the positions of other trains, so it is not part of the cached segment cost. */
+			extra_cost += Yapf().TunnelBridgeStationVirtualSignalCost(n, IsTunnelBridgeStationExitSectionOccupied(prev.tile, v));
+		}
 
 		if (!has_parent) {
 			/* We will jump to the middle of the cost calculator assuming that segment cache is not used. */
@@ -764,7 +801,7 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 
 			} else if ((follower->is_tunnel || follower->is_bridge) && cur.tile_type == TileType::TunnelBridge && IsTunnelBridgeStation(cur.tile)) {
 				/* Station platform inside a tunnel or bridge, which has just been passed through. */
-				uint platform_length = follower->tiles_skipped;
+				uint platform_length = GetTunnelBridgeStationPlatformLength(cur.tile);
 				/* We don't know yet if the station is our target or not. Act like
 				 * if it is pass-through station (not our destination). */
 				segment_cost += Yapf().PfGetSettings().rail_station_penalty * platform_length;
@@ -895,6 +932,12 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 
 		/* Don't consider path any further it if exceeded max_cost. */
 		if (end_segment_reason.Test(EndSegmentReason::PathTooLong)) return false;
+
+		if (end_segment_reason.Test(EndSegmentReason::Station) && IsTunnelBridgeStationTile(cur.tile) && TrackdirExitsTunnelBridge(cur.tile, cur.td)) {
+			/* The segment passed through a station platform inside a tunnel or bridge, there is a virtual block signal at the entrance of the platform.
+			 * This is the last signal of the segment, and its cost depends on the positions of other trains, so it is not part of the cached segment cost. */
+			extra_cost += Yapf().TunnelBridgeStationVirtualSignalCost(n, IsTunnelBridgeStationPlatformOccupied(cur.tile, v));
+		}
 
 		bool target_seen = false;
 		if (end_segment_reason.Any(ESRF_POSSIBLE_TARGET)) {

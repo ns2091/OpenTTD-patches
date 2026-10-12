@@ -14,6 +14,7 @@
 #include "window_gui.h"
 #include "station_cmd.h"
 #include "station_gui.h"
+#include "error.h"
 #include "terraform_gui.h"
 #include "viewport_func.h"
 #include "command_func.h"
@@ -220,10 +221,8 @@ void CcStation(const CommandCost &result, TileIndex tile)
 	if (_station_gui.sel_class == STAT_CLASS_DFLT && _station_gui.sel_type == 0 && !_settings_client.gui.persistent_buildingtools) ResetObjectToPlace();
 }
 
-/**
- * Place a rail station.
- * @param tile Position to place or start dragging a station.
- */
+static bool _tunnel_bridge_station_mode = false; ///< Whether the station tool places platforms inside rail tunnels and on rail bridges.
+
 /**
  * Make a rail tunnel or bridge into a station platform, or remove the station platform from it.
  * @param tile The clicked tile.
@@ -235,27 +234,131 @@ static bool PlaceRail_TunnelBridgeStation(TileIndex tile)
 
 	if (_remove_button_clicked) {
 		if (!IsTunnelBridgeStation(tile)) return false;
-		Command<Commands::RemoveTunnelBridgeStation>::Post(STR_ERROR_CAN_T_REMOVE_PART_OF_STATION, CommandCallback::PlaySound_CONSTRUCTION_RAIL, tile);
+		Command<Commands::RemoveTunnelBridgeStation>::Post(STR_ERROR_CAN_T_REMOVE_PART_OF_STATION, CommandCallback::PlaySound_CONSTRUCTION_RAIL, tile, INVALID_TILE, INVALID_TILE);
 		return true;
 	}
 
 	bool adjacent = _ctrl_pressed;
 	auto proc = [=](bool test, StationID to_join) -> bool {
 		if (test) {
-			return Command<Commands::BuildTunnelBridgeStation>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::BuildTunnelBridgeStation>()), tile, StationID::Invalid(), adjacent).Succeeded();
+			return Command<Commands::BuildTunnelBridgeStation>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::BuildTunnelBridgeStation>()), tile, INVALID_TILE, INVALID_TILE, StationID::Invalid(), adjacent).Succeeded();
 		} else {
-			return Command<Commands::BuildTunnelBridgeStation>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_STATION, CommandCallback::Station, tile, to_join, adjacent);
+			return Command<Commands::BuildTunnelBridgeStation>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_STATION, CommandCallback::Station, tile, INVALID_TILE, INVALID_TILE, to_join, adjacent);
 		}
 	};
 
-	ShowSelectStationIfNeeded(GetTunnelBridgeStationArea(tile), proc);
+	if (IsTunnelBridgeStation(tile)) {
+		/* Extending the existing platform to the whole middle part of the tunnel or bridge, which keeps its station. */
+		proc(false, NEW_STATION);
+		return true;
+	}
+
+	/* The whole middle part of the tunnel or bridge */
+	const uint length = GetTunnelBridgeLength(tile, GetOtherTunnelBridgeEnd(tile));
+	const TileArea area = (length == 0) ? TileArea(tile, 1, 1) : TileArea(GetTunnelBridgeTileAtOffset(tile, 1), GetTunnelBridgeTileAtOffset(tile, length));
+	ShowSelectStationIfNeeded(area, proc);
 	return true;
 }
 
+/**
+ * Find the rail tunnel or bridge whose middle part contains the given tile.
+ * @param tile The tile.
+ * @param axis The axis of the tunnel or bridge, or Axis::Invalid for any axis.
+ * @return One of the end tiles of the tunnel or bridge, or INVALID_TILE if there is none.
+ */
+static TileIndex FindRailTunnelBridgeAtMiddleTile(TileIndex tile, Axis axis)
+{
+	for (Axis a : { Axis::X, Axis::Y }) {
+		if (axis != Axis::Invalid && axis != a) continue;
+
+		if (IsBridgeAbove(tile) && GetBridgeAxis(tile) == a) {
+			const TileIndex end = GetNorthernBridgeEnd(tile);
+			if (GetTunnelBridgeTransportType(end) == TransportType::Rail) return end;
+		}
+
+		/* Look for the entrance of a tunnel on the north side of the tile which passes under the tile. */
+		const DiagDirection dir = (a == Axis::X) ? DiagDirection::NE : DiagDirection::NW;
+		const TileIndexDiffC diff = TileIndexDiffCByDiagDir(dir);
+		TileIndex t = tile;
+		for (uint i = 0; i <= _settings_game.construction.max_tunnel_length; i++) {
+			t = TileAddWrap(t, diff.x, diff.y);
+			if (t == INVALID_TILE) break;
+			if (IsTunnelTile(t) && GetTunnelBridgeDirection(t) == ReverseDiagDir(dir) && GetTunnelBridgeTransportType(t) == TransportType::Rail &&
+					DistanceManhattan(t, GetOtherTunnelEnd(t)) > DistanceManhattan(t, tile)) {
+				return t;
+			}
+		}
+	}
+	return INVALID_TILE;
+}
+
+/**
+ * Build or remove a station platform inside a rail tunnel or on a rail bridge, for the dragged tiles.
+ * @param start_tile Start tile of the drag.
+ * @param end_tile End tile of the drag.
+ * @param remove Whether to remove the platform tiles.
+ */
+static void HandleTunnelBridgeStationPlacement(TileIndex start_tile, TileIndex end_tile, bool remove)
+{
+	Axis axis = Axis::Invalid;
+	if (start_tile != end_tile) axis = (TileY(start_tile) == TileY(end_tile)) ? Axis::X : Axis::Y;
+
+	TileIndex tile = FindRailTunnelBridgeAtMiddleTile(start_tile, axis);
+	if (tile == INVALID_TILE) tile = FindRailTunnelBridgeAtMiddleTile(end_tile, axis);
+	if (tile == INVALID_TILE) {
+		ShowErrorMessage(GetEncodedString(remove ? STR_ERROR_CAN_T_REMOVE_PART_OF_STATION : STR_ERROR_CAN_T_BUILD_RAILROAD_STATION),
+				GetEncodedString(STR_ERROR_TUNNEL_BRIDGE_STATION_NOT_IN_TUNNEL_BRIDGE), WarningLevel::Info, TileX(end_tile) * TILE_SIZE, TileY(end_tile) * TILE_SIZE);
+		return;
+	}
+
+	/* Limit the dragged tiles to the middle part of the tunnel or bridge. */
+	const TileIndex key = std::min(tile, GetOtherTunnelBridgeEnd(tile));
+	const bool x_axis = DiagDirToAxis(GetTunnelBridgeDirection(key)) == Axis::X;
+	const int length = GetTunnelBridgeLength(key, GetOtherTunnelBridgeEnd(key));
+	auto limit = [&](TileIndex t) -> TileIndex {
+		const int offset = x_axis ? (int)TileX(t) - (int)TileX(key) : (int)TileY(t) - (int)TileY(key);
+		return key + TileOffsByDiagDir(GetTunnelBridgeDirection(key)) * Clamp(offset, 1, std::max(length, 1));
+	};
+	const TileIndex platform_start = limit(start_tile);
+	const TileIndex platform_end = limit(end_tile);
+
+	if (remove) {
+		Command<Commands::RemoveTunnelBridgeStation>::Post(STR_ERROR_CAN_T_REMOVE_PART_OF_STATION, CommandCallback::PlaySound_CONSTRUCTION_RAIL, tile, platform_start, platform_end);
+		return;
+	}
+
+	bool adjacent = _ctrl_pressed;
+	auto proc = [=](bool test, StationID to_join) -> bool {
+		if (test) {
+			return Command<Commands::BuildTunnelBridgeStation>::Do(CommandFlagsToDCFlags(GetCommandFlags<Commands::BuildTunnelBridgeStation>()), tile, platform_start, platform_end, StationID::Invalid(), adjacent).Succeeded();
+		} else {
+			return Command<Commands::BuildTunnelBridgeStation>::Post(STR_ERROR_CAN_T_BUILD_RAILROAD_STATION, CommandCallback::Station, tile, platform_start, platform_end, to_join, adjacent);
+		}
+	};
+
+	if (IsTunnelBridgeStationTile(tile)) {
+		/* Extending the existing platform of the tunnel or bridge, which keeps its station. */
+		proc(false, NEW_STATION);
+		return;
+	}
+	ShowSelectStationIfNeeded(TileArea(platform_start, platform_end), proc);
+}
+
+/**
+ * Place a rail station.
+ * @param tile Position to place or start dragging a station.
+ */
 static void PlaceRail_Station(TileIndex tile)
 {
 	/* Clicking on the end of a rail tunnel or bridge makes it into a station platform */
 	if (PlaceRail_TunnelBridgeStation(tile)) return;
+
+	if (_tunnel_bridge_station_mode) {
+		/* Drag along a tunnel or bridge to select the platform tiles */
+		VpStartPlaceSizing(tile, VPM_X_OR_Y, _remove_button_clicked ? DDSP_REMOVE_TUNNEL_BRIDGE_STATION : DDSP_BUILD_TUNNEL_BRIDGE_STATION);
+		VpSetPlaceSizingLimit(-1);
+		return;
+	}
 
 	if (_remove_button_clicked) {
 		VpStartPlaceSizing(tile, VPM_X_AND_Y_LIMITED, DDSP_REMOVE_STATION);
@@ -1066,6 +1169,11 @@ struct BuildRailToolbarWindow : Window {
 					break;
 				}
 
+				case DDSP_BUILD_TUNNEL_BRIDGE_STATION:
+				case DDSP_REMOVE_TUNNEL_BRIDGE_STATION:
+					HandleTunnelBridgeStationPlacement(start_tile, end_tile, select_proc == DDSP_REMOVE_TUNNEL_BRIDGE_STATION);
+					break;
+
 				case DDSP_REMOVE_STATION:
 				case DDSP_BUILD_STATION:
 					if (this->IsWidgetLowered(WID_RAT_BUILD_STATION)) {
@@ -1454,7 +1562,7 @@ private:
 	 */
 	void SetSelectedSize()
 	{
-		if (_settings_client.gui.station_dragdrop) {
+		if (_settings_client.gui.station_dragdrop || _tunnel_bridge_station_mode) {
 			SetTileSelectSize(1, 1);
 		} else {
 			int x = _settings_client.gui.station_numtracks;
@@ -1487,6 +1595,7 @@ public:
 		}
 		this->SetWidgetLoweredState(WID_BRAS_HIGHLIGHT_OFF, !_settings_client.gui.station_show_coverage);
 		this->SetWidgetLoweredState(WID_BRAS_HIGHLIGHT_ON, _settings_client.gui.station_show_coverage);
+		this->SetWidgetLoweredState(WID_BRAS_TUNNEL_BRIDGE, _tunnel_bridge_station_mode);
 		this->SetSelectedSize();
 
 		this->PickerWindow::OnInit();
@@ -1721,6 +1830,15 @@ public:
 				break;
 			}
 
+			case WID_BRAS_TUNNEL_BRIDGE:
+				_tunnel_bridge_station_mode = !_tunnel_bridge_station_mode;
+				this->SetWidgetLoweredState(WID_BRAS_TUNNEL_BRIDGE, _tunnel_bridge_station_mode);
+				this->SetSelectedSize();
+				SndClickBeep();
+				this->SetDirty();
+				CloseWindowById(WindowClass::JoinStation, 0);
+				break;
+
 			case WID_BRAS_HIGHLIGHT_OFF:
 			case WID_BRAS_HIGHLIGHT_ON:
 				_settings_client.gui.station_show_coverage = (widget != WID_BRAS_HIGHLIGHT_OFF);
@@ -1806,6 +1924,9 @@ static constexpr std::initializer_list<NWidgetPart> _nested_station_builder_widg
 					EndContainer(),
 					NWidget(NWID_HORIZONTAL), SetPIPRatio(1, 0, 1),
 						NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_PLATFORM_DRAG_N_DROP), SetMinimalSize(75, 12), SetStringTip(STR_STATION_BUILD_DRAG_DROP, STR_STATION_BUILD_DRAG_DROP_TOOLTIP),
+					EndContainer(),
+					NWidget(NWID_HORIZONTAL), SetPIPRatio(1, 0, 1),
+						NWidget(WWT_TEXTBTN, Colours::Grey, WID_BRAS_TUNNEL_BRIDGE), SetMinimalSize(75, 12), SetStringTip(STR_STATION_BUILD_TUNNEL_BRIDGE, STR_STATION_BUILD_TUNNEL_BRIDGE_TOOLTIP),
 					EndContainer(),
 					NWidget(WWT_LABEL, Colours::Invalid), SetStringTip(STR_STATION_BUILD_COVERAGE_AREA_TITLE), SetFill(1, 0),
 					NWidget(NWID_HORIZONTAL), SetPIPRatio(1, 0, 1),

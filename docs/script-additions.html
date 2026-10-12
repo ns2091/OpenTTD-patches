@@ -147,18 +147,38 @@
 		<h4>Additional Static Public Member Functions:</h4>
 		<div class="indent">
 			<div class="code">static bool BuildTunnelBridgeStation(TileIndex tile, StationID station_id)</div>
-			<div class="methodtext">Make the middle part of a rail tunnel or bridge into a station platform. Trains stop and load/unload inside the tunnel or bridge.</div>
+			<div class="methodtext">Make the whole middle part of a rail tunnel or bridge into a station platform. Trains stop and load/unload inside the tunnel or bridge.</div>
 			<div class="methodtext">tile is one of the end tiles of the tunnel or bridge. station_id is the station to join, STATION_NEW or STATION_JOIN_ADJACENT.</div>
 			<div class="methodtext">The tunnel or bridge must have at least one middle tile, must not have signals, must not be a tunnel under water or a bridge with custom bridge heads, and must not be in use by a train.</div>
+			<div class="methodtext">Signals cannot be built on a tunnel or bridge with a station platform. The pathfinder treats the platform as if there were block signals before and after it.</div>
+		</div>
+		<div class="indent">
+			<div class="code">static bool BuildTunnelBridgeStationPart(TileIndex tile, TileIndex platform_start, TileIndex platform_end, StationID station_id)</div>
+			<div class="methodtext">Make a part of the middle tiles of a rail tunnel or bridge into a station platform, or extend the existing platform of the tunnel or bridge.</div>
+			<div class="methodtext">platform_start and platform_end are the tiles at the ends of the platform, which must be between the end tiles of the tunnel or bridge.</div>
+			<div class="methodtext">A tunnel or bridge can have one platform, an extension must overlap or be adjacent to the existing platform and keeps its station.</div>
 		</div>
 		<div class="indent">
 			<div class="code">static bool RemoveTunnelBridgeStation(TileIndex tile)</div>
 			<div class="methodtext">Remove the station platform from a rail tunnel or bridge.</div>
 		</div>
 		<div class="indent">
+			<div class="code">static bool RemoveTunnelBridgeStationPart(TileIndex tile, TileIndex remove_start, TileIndex remove_end)</div>
+			<div class="methodtext">Remove the tiles between remove_start and remove_end from the station platform of a rail tunnel or bridge.</div>
+			<div class="methodtext">Only tiles at the ends of the platform can be removed, a platform cannot be split in two. If all tiles are removed, the platform is removed.</div>
+		</div>
+		<div class="indent">
 			<div class="code">static bool IsTunnelBridgeStationTile(TileIndex tile)</div>
-			<div class="methodtext">Check whether the tile is an end tile of a rail tunnel or bridge whose middle part is a station platform.</div>
+			<div class="methodtext">Check whether the tile is an end tile of a rail tunnel or bridge with a station platform.</div>
 			<div class="methodtext">GetStationID of the Station class and orders accept such end tiles as the location of the station.</div>
+		</div>
+		<div class="indent">
+			<div class="code">static TileIndex GetTunnelBridgeStationPlatformStartTile(TileIndex tile)</div>
+			<div class="methodtext">Get the platform tile of the station platform of a rail tunnel or bridge which is nearest to the given end tile.</div>
+		</div>
+		<div class="indent">
+			<div class="code">static TileIndex GetTunnelBridgeStationPlatformEndTile(TileIndex tile)</div>
+			<div class="methodtext">Get the platform tile of the station platform of a rail tunnel or bridge which is farthest from the given end tile.</div>
 		</div>
 	</div>
 

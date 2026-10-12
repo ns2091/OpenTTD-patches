@@ -1334,6 +1334,8 @@ STR_LAI_TUNNEL_DESCRIPTION_ROAD_CHUNNEL                         :Road tunnel (un
 STR_LAI_RAIL_DESCRIPTION_DIAGONAL_TUNNEL                        :Railway tunnel (diagonal)
 STR_LAI_TUNNEL_DESCRIPTION_RAILROAD_STATION                     :Railway tunnel with platform of {STATION}
 STR_LAI_BRIDGE_DESCRIPTION_RAILROAD_STATION                     :Railway bridge with platform of {STATION}
+STR_STATION_BUILD_TUNNEL_BRIDGE                                 :{BLACK}Tunnel/bridge
+STR_STATION_BUILD_TUNNEL_BRIDGE_TOOLTIP                         :{BLACK}Build platforms inside railway tunnels and on railway bridges. Drag along a tunnel or bridge to select the platform tiles, clicking an end of a tunnel or bridge selects its whole middle part. A tunnel or bridge can have one platform, and signals cannot be built on it
 STR_LAI_BRIDGE_DESCRIPTION_RAILROAD_SIGNAL                      :Railway bridge with signal simulation
 
 STR_SAVELOAD_UNKNOWN_ID                                         :{YELLOW}This file may be from a different game.
@@ -2109,6 +2111,9 @@ STR_ERROR_TUNNEL_BRIDGE_STATION_CHUNNEL                         :{WHITE}... not 
 STR_ERROR_TUNNEL_BRIDGE_STATION_CUSTOM_BRIDGE_HEAD              :{WHITE}... not possible on a bridge with a custom bridge head
 STR_ERROR_TUNNEL_BRIDGE_STATION_RESERVED                        :{WHITE}... a train has reserved a path through the tunnel or bridge
 STR_ERROR_NOT_POSSIBLE_ON_TUNNEL_BRIDGE_STATION                 :{WHITE}... not possible on a tunnel or bridge with a station platform
+STR_ERROR_TUNNEL_BRIDGE_STATION_NOT_IN_TUNNEL_BRIDGE            :{WHITE}... platform must be inside the tunnel or on the bridge, between its ends
+STR_ERROR_TUNNEL_BRIDGE_STATION_NOT_ADJACENT                    :{WHITE}... must be adjacent to the existing platform of the tunnel or bridge
+STR_ERROR_TUNNEL_BRIDGE_STATION_SPLIT                           :{WHITE}... platform inside a tunnel or on a bridge can't be split in two
 STR_ERROR_PURCHASE_LAND_LIMIT_REACHED                           :{WHITE}... land area purchasing limit reached
 STR_ERROR_CANT_PURCHASE_OTHER_COMPANY_DEPOT                     :{WHITE}Depot is owned by another company, and building vehicles there is not allowed.
 STR_ERROR_DEPOT_HAS_WRONG_RAIL_TYPE                             :{WHITE}Depot cannot be used to build trains with this rail type.

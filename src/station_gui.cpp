@@ -50,6 +50,8 @@
 #include "widgets/station_widget.h"
 #include "widgets/misc_widget.h"
 
+#include "tunnelbridge_station.h"
+
 #include "table/strings.h"
 
 #include "dropdown_common_type.h"
@@ -2541,6 +2543,18 @@ static void FindStationsNearby(TileArea ta, bool distant_join)
 	for (auto tile : SpiralTileSequence(TileAddByDir(ctx.tile, Direction::N), max_dist, ta.w, ta.h)) {
 		AddNearbyStation<T>(tile, &ctx);
 	}
+
+	/* Platforms inside tunnels and bridges are not station tiles. */
+	TileArea search_area = ta;
+	search_area.Expand(max_dist);
+	IterateTunnelBridgeStations([&](TileIndex key, const TunnelBridgeStationPlatform &platform) {
+		if (!T::IsValidID(platform.station) || !search_area.Intersects(GetTunnelBridgeStationArea(key))) return;
+		BaseStation *st = BaseStation::Get(platform.station);
+		if (st->owner != _local_company || std::ranges::find(_stations_nearby_list, platform.station) != _stations_nearby_list.end()) return;
+		if (st->rect.BeforeAddRect(ctx.tile, ctx.w, ctx.h, StationRect::ADD_TEST).Succeeded()) {
+			_stations_nearby_list.push_back(platform.station);
+		}
+	});
 }
 
 static constexpr std::initializer_list<NWidgetPart> _nested_select_station_widgets = {

@@ -136,10 +136,15 @@ CommandCost GetStationAround(TileArea ta, StationID closest_station, CompanyID c
 	for (TileIndex tile_cur : ta) {
 		if (IsTileType(tile_cur, TileType::Station)) {
 			if (!check_station(GetStationIndex(tile_cur))) return CommandCost(STR_ERROR_ADJOINS_MORE_THAN_ONE_EXISTING);
-		} else if (IsTunnelBridgeStationTile(tile_cur)) {
-			if (!check_station(GetTunnelBridgeStationID(tile_cur))) return CommandCost(STR_ERROR_ADJOINS_MORE_THAN_ONE_EXISTING);
 		}
 	}
+
+	/* check for platforms inside tunnels and bridges around */
+	bool tunnel_bridge_ok = true;
+	IterateTunnelBridgeStations([&](TileIndex key, const TunnelBridgeStationPlatform &platform) {
+		if (tunnel_bridge_ok && ta.Intersects(GetTunnelBridgeStationArea(key)) && !check_station(platform.station)) tunnel_bridge_ok = false;
+	});
+	if (!tunnel_bridge_ok) return CommandCost(STR_ERROR_ADJOINS_MORE_THAN_ONE_EXISTING);
 	*st = (closest_station == StationID::Invalid()) ? nullptr : T::Get(closest_station);
 	return CommandCost();
 }
@@ -2067,19 +2072,62 @@ CommandCost CmdRemoveFromRailStation(DoCommandFlags flags, TileIndex start, Tile
 }
 
 /**
- * Make the middle part of a rail tunnel or bridge into a platform of a station.
+ * Get the offset of a middle tile of a tunnel or bridge from its northern end tile.
+ * @param tile One of the end tiles of the tunnel or bridge.
+ * @param middle_tile The tile.
+ * @param[out] offset The offset of the tile from the northern end tile.
+ * @return Whether the tile is a middle tile of the tunnel or bridge.
+ */
+static bool GetTunnelBridgeMiddleTileOffset(TileIndex tile, TileIndex middle_tile, uint &offset)
+{
+	if (!IsValidTile(middle_tile)) return false;
+	const TileIndex other_end = GetOtherTunnelBridgeEnd(tile);
+	const TileIndex key = std::min(tile, other_end);
+	const bool x_axis = DiagDirToAxis(GetTunnelBridgeDirection(tile)) == Axis::X;
+	if (x_axis ? (TileY(middle_tile) != TileY(key)) : (TileX(middle_tile) != TileX(key))) return false;
+	if (middle_tile <= key) return false;
+	offset = DistanceManhattan(key, middle_tile);
+	return offset >= 1 && offset <= GetTunnelBridgeLength(tile, other_end);
+}
+
+/**
+ * Get the range of middle tiles of a tunnel or bridge given by two tiles.
+ * @param tile One of the end tiles of the tunnel or bridge.
+ * @param range_start One end of the range, or INVALID_TILE for the whole middle part of the tunnel or bridge.
+ * @param range_end Other end of the range, or INVALID_TILE for the whole middle part of the tunnel or bridge.
+ * @param[out] first The offset of the first tile of the range from the northern end tile.
+ * @param[out] last The offset of the last tile of the range from the northern end tile.
+ * @return Whether the range is valid.
+ */
+static bool GetTunnelBridgeMiddleTileRange(TileIndex tile, TileIndex range_start, TileIndex range_end, uint &first, uint &last)
+{
+	if (range_start == INVALID_TILE && range_end == INVALID_TILE) {
+		first = 1;
+		last = GetTunnelBridgeLength(tile, GetOtherTunnelBridgeEnd(tile));
+		return last >= 1;
+	}
+	if (range_start == INVALID_TILE) range_start = range_end;
+	if (range_end == INVALID_TILE) range_end = range_start;
+	if (!GetTunnelBridgeMiddleTileOffset(tile, range_start, first) || !GetTunnelBridgeMiddleTileOffset(tile, range_end, last)) return false;
+	if (first > last) std::swap(first, last);
+	return true;
+}
+
+/**
+ * Make a part of the middle tiles of a rail tunnel or bridge into a platform of a station, or extend an existing platform.
  * @param flags operation to perform
  * @param tile one of the end tiles of the tunnel or bridge
+ * @param platform_start one end of the platform, a middle tile of the tunnel or bridge; INVALID_TILE for the whole middle part
+ * @param platform_end other end of the platform, a middle tile of the tunnel or bridge; INVALID_TILE for the whole middle part
  * @param station_to_join station ID to join (NEW_STATION if build new one)
  * @param adjacent allow stations directly adjacent to other stations.
  * @return the cost of this operation or an error
  */
-CommandCost CmdBuildTunnelBridgeStation(DoCommandFlags flags, TileIndex tile, StationID station_to_join, bool adjacent)
+CommandCost CmdBuildTunnelBridgeStation(DoCommandFlags flags, TileIndex tile, TileIndex platform_start, TileIndex platform_end, StationID station_to_join, bool adjacent)
 {
 	if (!IsValidTile(tile) || !IsTileType(tile, TileType::TunnelBridge) || GetTunnelBridgeTransportType(tile) != TransportType::Rail) {
 		return CommandCost(STR_ERROR_TUNNEL_BRIDGE_STATION_NOT_RAIL_TUNNEL_BRIDGE);
 	}
-	if (IsTunnelBridgeStation(tile)) return CommandCost(STR_ERROR_ALREADY_BUILT);
 
 	CommandCost ret = CheckTileOwnership(tile);
 	if (ret.Failed()) return ret;
@@ -2089,19 +2137,32 @@ CommandCost CmdBuildTunnelBridgeStation(DoCommandFlags flags, TileIndex tile, St
 	if (IsTunnelBridgeWithSignalSimulation(tile) || IsTunnelBridgeWithSignalSimulation(other_end)) return CommandCost(STR_ERROR_MUST_REMOVE_SIGNALS_FIRST);
 	if (IsBridge(tile) && (IsRailCustomBridgeHead(tile) || IsRailCustomBridgeHead(other_end))) return CommandCost(STR_ERROR_TUNNEL_BRIDGE_STATION_CUSTOM_BRIDGE_HEAD);
 
-	const uint length = GetTunnelBridgeLength(tile, other_end);
-	if (length == 0) return CommandCost(STR_ERROR_TUNNEL_BRIDGE_STATION_TOO_SHORT);
+	if (GetTunnelBridgeLength(tile, other_end) == 0) return CommandCost(STR_ERROR_TUNNEL_BRIDGE_STATION_TOO_SHORT);
 
-	bool reuse = (station_to_join != NEW_STATION);
-	if (!reuse) station_to_join = StationID::Invalid();
-	bool distant_join = (station_to_join != StationID::Invalid());
-	if (distant_join && (!_settings_game.station.distant_join_stations || !Station::IsValidID(station_to_join))) return CMD_ERROR;
+	uint first, last;
+	if (!GetTunnelBridgeMiddleTileRange(tile, platform_start, platform_end, first, last)) return CommandCost(STR_ERROR_TUNNEL_BRIDGE_STATION_NOT_IN_TUNNEL_BRIDGE);
 
-	const TileArea area = GetTunnelBridgeStationArea(tile);
+	Station *st = nullptr;
+	const bool extend = IsTunnelBridgeStation(tile);
+	uint added_length;
+	if (extend) {
+		/* Extend the existing platform */
+		const TunnelBridgeStationPlatform &platform = GetTunnelBridgeStationPlatform(tile);
+		if (first >= platform.start && last <= platform.Last()) return CommandCost(STR_ERROR_ALREADY_BUILT);
+		if (last + 1 < platform.start || first > platform.Last() + 1) return CommandCost(STR_ERROR_TUNNEL_BRIDGE_STATION_NOT_ADJACENT);
+		st = Station::Get(platform.station);
+		if (station_to_join != NEW_STATION && station_to_join != StationID::Invalid() && station_to_join != st->index) return CommandCost(STR_ERROR_TUNNEL_BRIDGE_STATION_NOT_ADJACENT);
+		ret = CheckOwnership(st->owner);
+		if (ret.Failed()) return ret;
+		first = std::min<uint>(first, platform.start);
+		last = std::max<uint>(last, platform.Last());
+		added_length = (last - first + 1) - platform.length;
+	} else {
+		added_length = last - first + 1;
+	}
+
+	const TileArea area(GetTunnelBridgeTileAtOffset(tile, first), GetTunnelBridgeTileAtOffset(tile, last));
 	if (area.w > _settings_game.station.station_spread || area.h > _settings_game.station.station_spread) return CommandCost(STR_ERROR_STATION_TOO_SPREAD_OUT);
-
-	ret = CheckIfAuthorityAllowsNewStation(tile, flags);
-	if (ret.Failed()) return ret;
 
 	/* Trains which already have a path reserved through the tunnel/bridge would not know about the station. */
 	ret = TunnelBridgeIsFree(tile, other_end);
@@ -2110,23 +2171,40 @@ CommandCost CmdBuildTunnelBridgeStation(DoCommandFlags flags, TileIndex tile, St
 		return CommandCost(STR_ERROR_TUNNEL_BRIDGE_STATION_RESERVED);
 	}
 
-	Station *st = nullptr;
-	ret = FindJoiningStation(StationID::Invalid(), station_to_join, adjacent, area, &st);
-	if (ret.Failed()) return ret;
+	if (extend) {
+		ret = st->rect.BeforeAddRect(area.tile, area.w, area.h, StationRect::ADD_TEST);
+		if (ret.Failed()) return ret;
+	} else {
+		bool reuse = (station_to_join != NEW_STATION);
+		if (!reuse) station_to_join = StationID::Invalid();
+		bool distant_join = (station_to_join != StationID::Invalid());
+		if (distant_join && (!_settings_game.station.distant_join_stations || !Station::IsValidID(station_to_join))) return CMD_ERROR;
 
-	ret = BuildStationPart(&st, flags, reuse, area, StationNaming::Rail);
-	if (ret.Failed()) return ret;
+		ret = CheckIfAuthorityAllowsNewStation(tile, flags);
+		if (ret.Failed()) return ret;
+
+		ret = FindJoiningStation(StationID::Invalid(), station_to_join, adjacent, area, &st);
+		if (ret.Failed()) return ret;
+
+		ret = BuildStationPart(&st, flags, reuse, area, StationNaming::Rail);
+		if (ret.Failed()) return ret;
+	}
 
 	CommandCost cost(ExpensesType::Construction);
-	cost.AddCost((_price[Price::BuildStationRail] + _price[Price::BuildStationRailLength]) * length);
+	cost.AddCost((_price[Price::BuildStationRail] + _price[Price::BuildStationRailLength]) * added_length);
 
 	if (flags.Test(DoCommandFlag::Execute)) {
 		st->AddFacility(StationFacility::Train, tile);
 		st->rect.BeforeAddRect(area.tile, area.w, area.h, StationRect::ADD_TRY);
 
-		AddTunnelBridgeStation(tile, st);
+		if (extend) {
+			SetTunnelBridgeStationPlatformRange(tile, first, last - first + 1);
+		} else {
+			AddTunnelBridgeStation(tile, st, first, last - first + 1);
+		}
 
-		Company::Get(GetTileOwner(tile))->infrastructure.station += length;
+		Company::Get(GetTileOwner(tile))->infrastructure.station += added_length;
+		DirtyCompanyInfrastructureWindows(GetTileOwner(tile));
 
 		const Track track = DiagDirToDiagTrack(GetTunnelBridgeDirection(tile));
 		for (TileIndex t : { tile, other_end }) {
@@ -2142,30 +2220,44 @@ CommandCost CmdBuildTunnelBridgeStation(DoCommandFlags flags, TileIndex tile, St
 }
 
 /**
- * Remove the station platform from a rail tunnel or bridge, without any checks.
+ * Remove a part of the station platform of a rail tunnel or bridge, without any checks.
  * @param tile one of the end tiles of the tunnel or bridge
+ * @param first offset of the first tile to remove from the northern end tile
+ * @param last offset of the last tile to remove from the northern end tile
  * @pre IsTunnelBridgeStationTile(tile)
+ * @pre The removed tiles are at one end of the platform, or the whole platform is removed.
  */
-void DoRemoveTunnelBridgeStation(TileIndex tile)
+static void DoRemoveTunnelBridgeStationPart(TileIndex tile, uint first, uint last)
 {
-	Station *st = Station::Get(GetTunnelBridgeStationID(tile));
-	const TileArea area = GetTunnelBridgeStationArea(tile);
-	const uint length = GetTunnelBridgeStationPlatformLength(tile);
+	const TunnelBridgeStationPlatform platform = GetTunnelBridgeStationPlatform(tile);
+	Station *st = Station::Get(platform.station);
+	first = std::max<uint>(first, platform.start);
+	last = std::min<uint>(last, platform.Last());
+	const TileArea removed_area(GetTunnelBridgeTileAtOffset(tile, first), GetTunnelBridgeTileAtOffset(tile, last));
+	const uint removed_length = last - first + 1;
 
-	RemoveTunnelBridgeStation(tile);
+	if (removed_length >= platform.length) {
+		RemoveTunnelBridgeStation(tile);
+	} else if (first == platform.start) {
+		SetTunnelBridgeStationPlatformRange(tile, last + 1, platform.length - removed_length);
+	} else {
+		assert_tile(last == platform.Last(), tile);
+		SetTunnelBridgeStationPlatformRange(tile, platform.start, platform.length - removed_length);
+	}
 
 	const Owner owner = GetTileOwner(tile);
 	Company *c = Company::GetIfValid(owner);
-	if (c != nullptr) c->infrastructure.station -= length;
+	if (c != nullptr) c->infrastructure.station -= removed_length;
 	DirtyCompanyInfrastructureWindows(owner);
 
-	st->rect.AfterRemoveRect(st, area);
+	st->rect.AfterRemoveRect(st, removed_area);
 
+	const TileIndex other_end = GetOtherTunnelBridgeEnd(tile);
 	const Track track = DiagDirToDiagTrack(GetTunnelBridgeDirection(tile));
-	for (TileIndex t : { area.tile, TileAddXY(area.tile, area.w - 1, area.h - 1) }) {
+	for (TileIndex t : { tile, other_end }) {
 		YapfNotifyTrackLayoutChange(t, track);
 	}
-	MarkBridgeOrTunnelDirty(tile, GetOtherTunnelBridgeEnd(tile));
+	MarkBridgeOrTunnelDirty(tile, other_end);
 
 	if (st->train_station.tile == INVALID_TILE && st->tunnel_bridge_platforms.empty()) {
 		st->facilities.Reset(StationFacility::Train);
@@ -2177,12 +2269,26 @@ void DoRemoveTunnelBridgeStation(TileIndex tile)
 }
 
 /**
- * Remove the station platform from a rail tunnel or bridge.
+ * Remove the station platform from a rail tunnel or bridge, without any checks.
+ * @param tile one of the end tiles of the tunnel or bridge
+ * @pre IsTunnelBridgeStationTile(tile)
+ */
+void DoRemoveTunnelBridgeStation(TileIndex tile)
+{
+	const TunnelBridgeStationPlatform &platform = GetTunnelBridgeStationPlatform(tile);
+	DoRemoveTunnelBridgeStationPart(tile, platform.start, platform.Last());
+}
+
+/**
+ * Remove the station platform, or a part of it, from a rail tunnel or bridge.
+ * Only tiles at either end of the platform can be removed, a platform cannot be split into two.
  * @param flags operation to perform
  * @param tile one of the end tiles of the tunnel or bridge
+ * @param remove_start one end of the tiles to remove, a middle tile of the tunnel or bridge; INVALID_TILE for the whole platform
+ * @param remove_end other end of the tiles to remove, a middle tile of the tunnel or bridge; INVALID_TILE for the whole platform
  * @return the cost of this operation or an error
  */
-CommandCost CmdRemoveTunnelBridgeStation(DoCommandFlags flags, TileIndex tile)
+CommandCost CmdRemoveTunnelBridgeStation(DoCommandFlags flags, TileIndex tile, TileIndex remove_start, TileIndex remove_end)
 {
 	if (!IsValidTile(tile) || !IsTunnelBridgeStationTile(tile)) return CommandCost(STR_ERROR_THERE_IS_NO_STATION);
 
@@ -2191,6 +2297,14 @@ CommandCost CmdRemoveTunnelBridgeStation(DoCommandFlags flags, TileIndex tile)
 		if (ret.Failed()) return ret;
 	}
 
+	const TunnelBridgeStationPlatform &platform = GetTunnelBridgeStationPlatform(tile);
+	uint first, last;
+	if (!GetTunnelBridgeMiddleTileRange(tile, remove_start, remove_end, first, last)) return CommandCost(STR_ERROR_TUNNEL_BRIDGE_STATION_NOT_IN_TUNNEL_BRIDGE);
+	first = std::max<uint>(first, platform.start);
+	last = std::min<uint>(last, platform.Last());
+	if (first > last) return CommandCost(STR_ERROR_THERE_IS_NO_STATION);
+	if (first > platform.start && last < platform.Last()) return CommandCost(STR_ERROR_TUNNEL_BRIDGE_STATION_SPLIT);
+
 	const TileIndex other_end = GetOtherTunnelBridgeEnd(tile);
 	CommandCost ret = TunnelBridgeIsFree(tile, other_end);
 	if (ret.Failed()) return ret;
@@ -2198,10 +2312,10 @@ CommandCost CmdRemoveTunnelBridgeStation(DoCommandFlags flags, TileIndex tile)
 		return CommandCost(STR_ERROR_TUNNEL_BRIDGE_STATION_RESERVED);
 	}
 
-	CommandCost cost(ExpensesType::Construction, _price[Price::ClearStationRail] * GetTunnelBridgeStationPlatformLength(tile));
+	CommandCost cost(ExpensesType::Construction, _price[Price::ClearStationRail] * (last - first + 1));
 
 	if (flags.Test(DoCommandFlag::Execute)) {
-		DoRemoveTunnelBridgeStation(tile);
+		DoRemoveTunnelBridgeStationPart(tile, first, last);
 	}
 
 	return cost;
@@ -6081,15 +6195,8 @@ void ForAllStationsAroundTilesIntl(const TileArea &ta, ForAllStationsAroundTiles
 		if (IsTileType(tile, TileType::Station)) seen_stations.insert(GetStationIndex(tile));
 	}
 	if (GetTunnelBridgeStationCount() > 0) {
-		const int left = TileX(ta_ext.tile);
-		const int top = TileY(ta_ext.tile);
-		const int right = left + ta_ext.w - 1;
-		const int bottom = top + ta_ext.h - 1;
-		IterateTunnelBridgeStations([&](TileIndex tile, StationID st) {
-			const TileArea area = GetTunnelBridgeStationArea(tile);
-			if ((int)TileX(area.tile) > right || (int)(TileX(area.tile) + area.w - 1) < left) return;
-			if ((int)TileY(area.tile) > bottom || (int)(TileY(area.tile) + area.h - 1) < top) return;
-			seen_stations.insert(st);
+		IterateTunnelBridgeStations([&](TileIndex tile, const TunnelBridgeStationPlatform &platform) {
+			if (ta_ext.Intersects(GetTunnelBridgeStationArea(tile))) seen_stations.insert(platform.station);
 		});
 	}
 

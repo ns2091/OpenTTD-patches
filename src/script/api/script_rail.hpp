@@ -281,8 +281,9 @@ public:
 	static bool BuildRailStation(TileIndex tile, RailTrack direction, SQInteger num_platforms, SQInteger platform_length, StationID station_id);
 
 	/**
-	 * Make the middle part of a rail tunnel or bridge into a station platform.
+	 * Make the whole middle part of a rail tunnel or bridge into a station platform.
 	 * Trains stop and load/unload inside the tunnel or bridge.
+	 * Signals cannot be built on a tunnel or bridge with a station platform.
 	 * @param tile One of the end tiles of the rail tunnel or bridge.
 	 * @param station_id The station to join, ScriptStation::STATION_NEW or ScriptStation::STATION_JOIN_ADJACENT.
 	 * @pre ScriptMap::IsValidTile(tile).
@@ -300,6 +301,31 @@ public:
 	static bool BuildTunnelBridgeStation(TileIndex tile, StationID station_id);
 
 	/**
+	 * Make a part of the middle tiles of a rail tunnel or bridge into a station platform, or extend the existing station platform of the tunnel or bridge.
+	 * Trains stop and load/unload inside the tunnel or bridge.
+	 * Signals cannot be built on a tunnel or bridge with a station platform.
+	 * A tunnel or bridge can have only one platform, an extension must overlap or be adjacent to the existing platform.
+	 * @param tile One of the end tiles of the rail tunnel or bridge.
+	 * @param platform_start One end of the platform, this must be a tile between the end tiles of the tunnel or bridge.
+	 * @param platform_end The other end of the platform, this must be a tile between the end tiles of the tunnel or bridge.
+	 * @param station_id The station to join, ScriptStation::STATION_NEW or ScriptStation::STATION_JOIN_ADJACENT.
+	 * @pre ScriptMap::IsValidTile(tile).
+	 * @pre ScriptMap::IsValidTile(platform_start).
+	 * @pre ScriptMap::IsValidTile(platform_end).
+	 * @pre station_id == ScriptStation::STATION_NEW || station_id == ScriptStation::STATION_JOIN_ADJACENT || ScriptStation::IsValidStation(station_id).
+	 * @game @pre ScriptCompanyMode::IsValid().
+	 * @exception ScriptError::ERR_OWNED_BY_ANOTHER_COMPANY
+	 * @exception ScriptError::ERR_VEHICLE_IN_THE_WAY
+	 * @exception ScriptError::ERR_STATION_TOO_SPREAD_OUT
+	 * @exception ScriptStation::ERR_STATION_TOO_CLOSE_TO_ANOTHER_STATION
+	 * @exception ScriptStation::ERR_STATION_TOO_MANY_STATIONS
+	 * @exception ScriptStation::ERR_STATION_TOO_MANY_STATIONS_IN_TOWN
+	 * @return Whether the station platform has been/can be build or not.
+	 * @note This is a non-standard addition to the script API.
+	 */
+	static bool BuildTunnelBridgeStationPart(TileIndex tile, TileIndex platform_start, TileIndex platform_end, StationID station_id);
+
+	/**
 	 * Remove the station platform from a rail tunnel or bridge.
 	 * @param tile One of the end tiles of the rail tunnel or bridge.
 	 * @pre IsTunnelBridgeStationTile(tile).
@@ -311,6 +337,23 @@ public:
 	static bool RemoveTunnelBridgeStation(TileIndex tile);
 
 	/**
+	 * Remove a part of the station platform of a rail tunnel or bridge.
+	 * Only tiles at the ends of the platform can be removed, a platform cannot be split in two.
+	 * If all tiles of the platform are removed, the platform is removed.
+	 * @param tile One of the end tiles of the rail tunnel or bridge.
+	 * @param remove_start One end of the tiles to remove, this must be a tile between the end tiles of the tunnel or bridge.
+	 * @param remove_end The other end of the tiles to remove, this must be a tile between the end tiles of the tunnel or bridge.
+	 * @pre IsTunnelBridgeStationTile(tile).
+	 * @pre ScriptMap::IsValidTile(remove_start).
+	 * @pre ScriptMap::IsValidTile(remove_end).
+	 * @game @pre ScriptCompanyMode::IsValid().
+	 * @exception ScriptError::ERR_VEHICLE_IN_THE_WAY
+	 * @return Whether the station platform tiles have been/can be removed or not.
+	 * @note This is a non-standard addition to the script API.
+	 */
+	static bool RemoveTunnelBridgeStationPart(TileIndex tile, TileIndex remove_start, TileIndex remove_end);
+
+	/**
 	 * Check whether the tile is an end tile of a rail tunnel or bridge whose middle part is a station platform.
 	 * @param tile The tile to check.
 	 * @pre ScriptMap::IsValidTile(tile).
@@ -318,6 +361,22 @@ public:
 	 * @note This is a non-standard addition to the script API.
 	 */
 	static bool IsTunnelBridgeStationTile(TileIndex tile);
+
+	/**
+	 * Get the platform tile of a rail tunnel or bridge station platform which is nearest to the given end tile of the tunnel or bridge.
+	 * @param tile One of the end tiles of the rail tunnel or bridge.
+	 * @return The platform tile nearest to the given end tile, or ScriptMap::TILE_INVALID if the tile is not an end tile of a tunnel or bridge with a station platform.
+	 * @note This is a non-standard addition to the script API.
+	 */
+	static TileIndex GetTunnelBridgeStationPlatformStartTile(TileIndex tile);
+
+	/**
+	 * Get the platform tile of a rail tunnel or bridge station platform which is farthest from the given end tile of the tunnel or bridge.
+	 * @param tile One of the end tiles of the rail tunnel or bridge.
+	 * @return The platform tile farthest from the given end tile, or ScriptMap::TILE_INVALID if the tile is not an end tile of a tunnel or bridge with a station platform.
+	 * @note This is a non-standard addition to the script API.
+	 */
+	static TileIndex GetTunnelBridgeStationPlatformEndTile(TileIndex tile);
 
 	/**
 	 * Build a NewGRF rail station. This calls callback 18 to let a NewGRF

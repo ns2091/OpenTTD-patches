@@ -1806,9 +1806,9 @@
       </ul>
      </li>
      <li>m5 bit 4: pbs reservation state for railway (tunnel only)</li>
-     <li style="color: blue">m5 bit 4: set if the middle part of the railway bridge is a station platform (railway bridge only)</li>
-     <li style="color: blue">m6 bit 2: set if the middle part of the railway tunnel is a station platform (railway tunnel only)<br>
-      The station is stored in a separate table keyed by the northern end tile of the tunnel/bridge, saved in the TBST chunk.</li>
+     <li style="color: blue">m5 bit 4: set if (a part of) the middle part of the railway bridge is a station platform (railway bridge only)</li>
+     <li style="color: blue">m6 bit 2: set if (a part of) the middle part of the railway tunnel is a station platform (railway tunnel only)<br>
+      The station and the range of platform tiles are stored in a separate table keyed by the northern end tile of the tunnel/bridge, saved in the TBST chunk.</li>
      <li>m5 bits 3..2: transport type
       <table>
        <tr>

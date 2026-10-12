@@ -196,6 +196,8 @@ enum ViewportDragDropSelectionProcess : uint8_t {
 	DDSP_BUILD_SIGNALS,        ///< Signal placement
 	DDSP_BUILD_STATION,        ///< Station placement
 	DDSP_REMOVE_STATION,       ///< Station removal
+	DDSP_BUILD_TUNNEL_BRIDGE_STATION,  ///< Station platform placement inside a tunnel or on a bridge
+	DDSP_REMOVE_TUNNEL_BRIDGE_STATION, ///< Station platform removal inside a tunnel or on a bridge
 	DDSP_CONVERT_RAIL,         ///< Rail conversion
 	DDSP_CONVERT_RAIL_TRACK,   ///< Rail conversion (track)
 

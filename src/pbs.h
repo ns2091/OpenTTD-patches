@@ -113,10 +113,10 @@ struct TrainReservationLookAhead {
 		return this->reservation_end_position - (this->tunnel_bridge_reserved_tiles * TILE_SIZE);
 	}
 
-	void AddStation(int tiles, StationID id, int16_t z_pos, uint16_t station_flags = 0)
+	void AddStation(int tiles, StationID id, int16_t z_pos, uint16_t station_flags = 0, int offset_tiles = 0)
 	{
-		int32_t end = this->RealEndPosition();
-		this->items.push_back({ end, end + (((int32_t)TILE_SIZE) * tiles), z_pos, id.base(), station_flags, TRLIT_STATION });
+		int32_t start = this->RealEndPosition() + (((int32_t)TILE_SIZE) * offset_tiles);
+		this->items.push_back({ start, start + (((int32_t)TILE_SIZE) * tiles), z_pos, id.base(), station_flags, TRLIT_STATION });
 	}
 
 	void AddReverse(int16_t z_pos)

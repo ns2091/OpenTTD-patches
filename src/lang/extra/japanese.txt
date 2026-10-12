@@ -208,5 +208,10 @@ STR_ERROR_TUNNEL_BRIDGE_STATION_CHUNNEL                         :{WHITE}海底�
 STR_ERROR_TUNNEL_BRIDGE_STATION_CUSTOM_BRIDGE_HEAD              :{WHITE}カスタム橋頭のある橋には設置できません
 STR_ERROR_TUNNEL_BRIDGE_STATION_RESERVED                        :{WHITE}列車がトンネル/橋を通る経路を予約しています
 STR_ERROR_NOT_POSSIBLE_ON_TUNNEL_BRIDGE_STATION                 :{WHITE}駅ホームのあるトンネル/橋では実行できません
+STR_ERROR_TUNNEL_BRIDGE_STATION_NOT_IN_TUNNEL_BRIDGE            :{WHITE}ホームはトンネル/橋の両端の間に設置する必要があります
+STR_ERROR_TUNNEL_BRIDGE_STATION_NOT_ADJACENT                    :{WHITE}トンネル/橋の既存のホームに隣接している必要があります
+STR_ERROR_TUNNEL_BRIDGE_STATION_SPLIT                           :{WHITE}トンネル/橋のホームを2つに分割することはできません
 STR_LAI_TUNNEL_DESCRIPTION_RAILROAD_STATION                     :鉄道トンネル({STATION}のホーム)
 STR_LAI_BRIDGE_DESCRIPTION_RAILROAD_STATION                     :鉄道橋({STATION}のホーム)
+STR_STATION_BUILD_TUNNEL_BRIDGE                                 :{BLACK}トンネル/橋
+STR_STATION_BUILD_TUNNEL_BRIDGE_TOOLTIP                         :{BLACK}鉄道トンネル内や鉄道橋の上にホームを設置します。トンネル/橋に沿ってドラッグしてホームの区間を選択します。トンネル/橋の端をクリックすると中間部全体を選択します。トンネル/橋1本につきホームは1つで、信号は設置できません

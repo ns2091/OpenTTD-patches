@@ -3051,7 +3051,7 @@ void DrawBridgeMiddle(const TileInfo *ti)
 	}
 	AddSortableSpriteToDraw(SPR_EMPTY_BOUNDING_BOX, PAL_NONE, x, y, bridge_z - TILE_HEIGHT + BB_Z_SEPARATOR, {{}, {TILE_SIZE, TILE_SIZE, 1}, {}}, false, nullptr, special_flags);
 
-	if (transport_type == TransportType::Rail && IsTunnelBridgeStation(rampsouth)) {
+	if (transport_type == TransportType::Rail && IsTunnelBridgeStation(rampsouth) && IsTunnelBridgeStationPlatformTile(rampsouth, ti->tile)) {
 		DrawBridgeStationMiddle(ti, rampsouth, rampnorth, axis, psid, drawfarpillar, x, y, z, bridge_z);
 		return;
 	}

@@ -61,6 +61,8 @@ enum BuildRailStationWidgets : WidgetID {
 	WID_BRAS_HIGHLIGHT_ON,         ///< Button for turning coverage highlighting on.
 	WID_BRAS_COVERAGE_TEXTS,       ///< Empty space for the coverage texts.
 
+	WID_BRAS_TUNNEL_BRIDGE,        ///< Button to build platforms inside tunnels and on bridges.
+
 	WID_BRAS_PLATFORM_NUM_BEGIN = WID_BRAS_PLATFORM_NUM_1 - 1, ///< Helper for determining the chosen platform width.
 	WID_BRAS_PLATFORM_LEN_BEGIN = WID_BRAS_PLATFORM_LEN_1 - 1, ///< Helper for determining the chosen platform length.
 };
