@@ -282,6 +282,9 @@ static ScriptOrder::OrderPosition RealOrderPositionToScriptOrderPosition(Vehicle
 				for (TileIndex t : st->train_station) {
 					if (st->TileBelongsToRailStation(t)) return t;
 				}
+			} else if (!st->tunnel_bridge_platforms.empty()) {
+				/* Station platform inside a tunnel or bridge */
+				return st->tunnel_bridge_platforms.front();
 			} else if (st->ship_station.tile != INVALID_TILE) {
 				for (TileIndex t : st->ship_station) {
 					if (IsTileType(t, TileType::Station) && (IsDock(t) || IsOilRig(t)) && GetStationIndex(t) == st->index) return t;
