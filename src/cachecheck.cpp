@@ -34,6 +34,7 @@
 #include "tracerestrict.h"
 #include "train.h"
 #include "tunnelbridge.h"
+#include "diagonal_tunnel.h"
 #include "vehicle_base.h"
 
 #include "safeguards.h"
@@ -301,6 +302,13 @@ void CheckCaches(bool force_check, std::function<void(std::string_view)> log, Ch
 				cclog("industry type cache mismatch: type {}, (old size: {}, new size: {})", i, old_industries[i].size(), Industry::industries[i].size());
 			}
 		}
+	}
+
+	if (flags & CHECK_CACHE_GENERAL) {
+		/* Check the diagonal tunnel cache. This must be done before checking the infrastructure totals. */
+		ValidateDiagonalTunnelCache([&](std::string_view str) {
+			cclog("{}", str);
+		});
 	}
 
 	if (flags & CHECK_CACHE_INFRA_TOTALS) {

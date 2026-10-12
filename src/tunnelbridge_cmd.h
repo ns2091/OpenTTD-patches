@@ -13,6 +13,8 @@
 #include "command_type.h"
 #include "transport_type.h"
 #include "bridge.h"
+#include "track_type.h"
+#include "rail_type.h"
 
 enum class BuildBridgeFlags : uint8_t {
 	None                  = 0,         ///< No flag set.
@@ -22,5 +24,6 @@ DECLARE_ENUM_AS_BIT_SET(BuildBridgeFlags)
 
 DEF_CMD_TUPLE(Commands::BuildBridge, CmdBuildBridge, CMD_DEITY | CMD_NO_WATER | CMD_AUTO, CommandType::LandscapeConstruction, CmdDataT<TileIndex, TransportType, BridgeType, uint8_t, BuildBridgeFlags>)
 DEF_CMD_TUPLE(Commands::BuildTunnel, CmdBuildTunnel,                CMD_DEITY | CMD_AUTO, CommandType::LandscapeConstruction, CmdDataT<TransportType, uint8_t>)
+DEF_CMD_TUPLE(Commands::BuildDiagonalTunnel, CmdBuildDiagonalTunnel,             CMD_AUTO, CommandType::LandscapeConstruction, CmdDataT<Track, RailType>)
 
 #endif /* TUNNELBRIDGE_CMD_H */

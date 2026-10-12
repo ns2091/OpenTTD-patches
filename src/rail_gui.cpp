@@ -51,6 +51,7 @@
 
 #include "station_map.h"
 #include "tunnelbridge_map.h"
+#include "diagonal_tunnel.h"
 
 #include "widgets/rail_widget.h"
 
@@ -376,6 +377,40 @@ void CcBuildRailTunnel(const CommandCost &result, TileIndex tile)
 	} else {
 		SetRedErrorSquare(_build_tunnel_endtile);
 	}
+}
+
+/**
+ * Command callback for building a diagonal tunnel.
+ * @param result The result of the command.
+ * @param tile The tile where the command was executed on.
+ * @param track The track of the tunnel portal on the start tile.
+ * @param railtype The rail type of the tunnel.
+ */
+void CcBuildRailDiagonalTunnel(const CommandCost &result, TileIndex tile, Track track, RailType railtype)
+{
+	if (result.Succeeded()) {
+		if (_settings_client.sound.confirm) SndPlayTileFx(SND_20_CONSTRUCTION_RAIL, tile);
+		if (!_settings_client.gui.persistent_buildingtools) ResetObjectToPlace();
+	} else {
+		SetRedErrorSquare(_build_tunnel_endtile);
+	}
+}
+
+/**
+ * Get the track of the diagonal tunnel portal which would be built at the given point.
+ * @param pt The point in world coordinates.
+ * @param tile The tile at the point.
+ * @return The track, or INVALID_TRACK if the slope of the tile is not suitable for a diagonal tunnel portal.
+ */
+static Track GetDiagonalTunnelTrackAtPoint(Point pt, TileIndex tile)
+{
+	const Direction dir = GetDiagonalTunnelDirectionFromSlope(GetTileSlope(tile));
+	if (dir == Direction::Invalid) return INVALID_TRACK;
+
+	const int fract_x = pt.x & TILE_UNIT_MASK;
+	const int fract_y = pt.y & TILE_UNIT_MASK;
+	if (GetDiagonalTunnelPortalTrackBits(dir) & TRACK_BIT_HORZ) return (fract_x + fract_y <= 15) ? TRACK_UPPER : TRACK_LOWER;
+	return (fract_x <= fract_y) ? TRACK_RIGHT : TRACK_LEFT;
 }
 
 /**
@@ -932,9 +967,15 @@ struct BuildRailToolbarWindow : Window {
 				PlaceRail_Bridge(tile, this);
 				break;
 
-			case WID_RAT_BUILD_TUNNEL:
-				Command<Commands::BuildTunnel>::Post(STR_ERROR_CAN_T_BUILD_TUNNEL_HERE, CommandCallback::BuildRailTunnel, tile, TransportType::Rail, _cur_railtype);
+			case WID_RAT_BUILD_TUNNEL: {
+				const Track diagonal_track = GetDiagonalTunnelTrackAtPoint(pt, tile);
+				if (diagonal_track != INVALID_TRACK) {
+					Command<Commands::BuildDiagonalTunnel>::Post(STR_ERROR_CAN_T_BUILD_TUNNEL_HERE, CommandCallback::BuildRailDiagonalTunnel, tile, diagonal_track, _cur_railtype);
+				} else {
+					Command<Commands::BuildTunnel>::Post(STR_ERROR_CAN_T_BUILD_TUNNEL_HERE, CommandCallback::BuildRailTunnel, tile, TransportType::Rail, _cur_railtype);
+				}
 				break;
+			}
 
 			case WID_RAT_CONVERT_RAIL:
 				if (_thd.place_mode & HT_RAIL) {
@@ -1048,6 +1089,12 @@ struct BuildRailToolbarWindow : Window {
 
 	void OnPlacePresize([[maybe_unused]] Point pt, TileIndex tile) override
 	{
+		const Track diagonal_track = GetDiagonalTunnelTrackAtPoint(pt, tile);
+		if (diagonal_track != INVALID_TRACK) {
+			Command<Commands::BuildDiagonalTunnel>::Do(DoCommandFlag::Auto, tile, diagonal_track, _cur_railtype);
+			VpSetPresizeHalfTileLine(tile, _build_tunnel_endtile == INVALID_TILE ? tile : _build_tunnel_endtile, diagonal_track);
+			return;
+		}
 		Command<Commands::BuildTunnel>::Do(DoCommandFlag::Auto, tile, TransportType::Rail, _cur_railtype);
 		VpSetPresizeRange(tile, _build_tunnel_endtile == INVALID_TILE ? tile : _build_tunnel_endtile);
 	}

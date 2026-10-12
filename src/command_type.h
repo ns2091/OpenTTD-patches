@@ -505,6 +505,7 @@ enum class Commands : uint8_t {
 	PurchaseLandArea,                       ///< purchase an area of landscape
 	BuildObjectArea,                        ///< build an area of objects
 	BuildTunnel,                            ///< build a tunnel
+	BuildDiagonalTunnel,                    ///< build a diagonal rail tunnel
 
 	RemoveFromRailStation,                  ///< remove a (rectangle of) tiles from a rail station
 	ConvertRail,                            ///< convert a rail type
@@ -821,6 +822,7 @@ enum class CommandCallback : uint8_t {
 	RailDepot,
 	Station,
 	BuildRailTunnel,
+	BuildRailDiagonalTunnel,
 
 	/* road_gui.cpp */
 	PlaySound_CONSTRUCTION_OTHER,

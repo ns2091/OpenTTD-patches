@@ -165,6 +165,8 @@ add_files(
     depot_gui.cpp
     depot_map.h
     depot_type.h
+    diagonal_tunnel.cpp
+    diagonal_tunnel.h
     direction_func.h
     direction_type.h
     disaster_vehicle.cpp

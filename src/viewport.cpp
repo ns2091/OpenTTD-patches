@@ -5944,6 +5944,32 @@ void VpSetPresizeRange(TileIndex from, TileIndex to)
 	}
 }
 
+/**
+ * Highlights a line of half tile track pieces, such as the route of a diagonal tunnel.
+ * @param from The start tile.
+ * @param to The end tile.
+ * @param track The half tile track on the start tile.
+ */
+void VpSetPresizeHalfTileLine(TileIndex from, TileIndex to, Track track)
+{
+	assert(!IsDiagonalTrack(track));
+
+	uint64_t distance = DistanceManhattan(from, to) + 1;
+
+	_thd.selend.x = TileX(to) * TILE_SIZE;
+	_thd.selend.y = TileY(to) * TILE_SIZE;
+	_thd.selstart.x = TileX(from) * TILE_SIZE;
+	_thd.selstart.y = TileY(from) * TILE_SIZE;
+	_thd.next_drawstyle = HT_LINE | static_cast<HighLightStyle>(track);
+
+	/* show measurement only if there is any length to speak of */
+	if (distance > 1) {
+		ShowMeasurementTooltips(GetEncodedString(STR_MEASURE_LENGTH, distance));
+	} else {
+		HideMeasurementTooltips();
+	}
+}
+
 static void VpStartPreSizing()
 {
 	_thd.selend.x = -1;

@@ -91,6 +91,7 @@ The TT-Forums thread for this patchpack can be found [here](https://www.tt-forum
 * Signals in tunnels and on bridges.
 * Custom bridge heads.
 * [Chunnels (tunnels under bodies of water)](https://www.tt-forums.net/viewtopic.php?f=33&t=41775). Off by default.
+* Diagonal rail tunnels, which run along the half tile track pieces. Built using the tunnel tool on tiles with one corner raised.
 * Allow building rail stations under bridges, subject to height/clearance and bridge pillar limitations.
 * Add setting to allow placing NewGRF rail stations under bridges, when the GRF doesn't specify whether or not it can be placed under bridges.
 * Add setting to allow placing all NewGRF objects under bridges, even when it would not otherwise be allowed by the GRF.
