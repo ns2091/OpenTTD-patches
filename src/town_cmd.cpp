@@ -4270,9 +4270,9 @@ CommandCost CmdTownAutoFundBuildings(DoCommandFlags flags, TownID town_id, bool 
 }
 
 /**
- * Renew the "fund new buildings" town action on behalf of the first company which
- * requested automatic renewal and is currently able to pay for it.
- * @param t The town in which the funding has expired.
+ * Perform the "fund new buildings" town action on behalf of the first company which
+ * requested automatic funding and is currently able to pay for it.
+ * @param t The town in which no funding is active.
  */
 static void TownAutoFundBuildings(Town *t)
 {
@@ -4787,6 +4787,19 @@ void TownsMonthlyLoop()
 		SetWindowDirty(WindowClass::TownView, t->index);
 	}
 
+}
+
+void TownsDailyLoop()
+{
+	/* On the first day of a month, this is done by TownsMonthlyLoop, which is called afterwards.
+	 * Funding here would be cut short by the monthly decrement. */
+	if (EconTime::CurDay() == 1) return;
+
+	for (Town *t : Town::Iterate()) {
+		/* Start automatic funding of new buildings when it is not active, for example
+		 * because it was just requested, or the company could not afford it before. */
+		if (t->fund_buildings_months == 0 && t->fund_buildings_auto.Any()) TownAutoFundBuildings(t);
+	}
 }
 
 void TownsYearlyLoop()

@@ -470,10 +470,17 @@ public:
 				Command<Commands::TownAction>::Post(STR_ERROR_CAN_T_DO_THIS, this->town->xy, static_cast<TownID>(this->window_number), static_cast<TownAction>(this->sel_index));
 				break;
 
-			case WID_TA_AUTO_FUND_BUILDINGS:
+			case WID_TA_AUTO_FUND_BUILDINGS: {
 				if (!Company::IsValidID(_local_company)) break;
-				Command<Commands::TownAutoFundBuildings>::Post(STR_ERROR_CAN_T_DO_THIS, static_cast<TownID>(this->window_number), !this->town->fund_buildings_auto.Test(_local_company));
+				const bool enable = !this->town->fund_buildings_auto.Test(_local_company);
+				/* Start funding straight away if it is not active, this also reports when the company can't afford it.
+				 * This is done before enabling, so that the automatic funding can't fund it in between as well. */
+				if (enable && this->town->fund_buildings_months == 0) {
+					Command<Commands::TownAction>::Post(STR_ERROR_CAN_T_DO_THIS, this->town->xy, static_cast<TownID>(this->window_number), TownAction::FundBuildings);
+				}
+				Command<Commands::TownAutoFundBuildings>::Post(STR_ERROR_CAN_T_DO_THIS, static_cast<TownID>(this->window_number), enable);
 				break;
+			}
 
 			case WID_TA_SETTING: {
 				uint8_t idx = this->sel_index - 0x100;

@@ -337,6 +337,7 @@ bool EconTime::UsingWallclockUnits(bool newgame)
 extern void EnginesDailyLoop();
 extern void DisasterDailyLoop();
 extern void IndustryDailyLoop();
+extern void TownsDailyLoop();
 
 extern void CompaniesCalendarMonthlyLoop();
 extern void CompaniesEconomyMonthlyLoop();
@@ -457,6 +458,7 @@ static void OnNewEconomyDay()
 	DisasterDailyLoop();
 	IndustryDailyLoop();
 	StationDailyLoop();
+	TownsDailyLoop();
 
 	ClearOutOfDateSignalSpeedRestrictions();
 
