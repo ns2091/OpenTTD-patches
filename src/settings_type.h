@@ -800,6 +800,7 @@ struct PathfinderSettings {
 	uint8_t  wait_twoway_signal;             ///< waitingtime in days before a twoway signal
 
 	bool     reserve_paths;                  ///< always reserve paths regardless of signal type.
+	bool     train_route_plan;               ///< plan the routes of trains over their whole order list, and follow the planned paths
 	uint8_t  wait_for_pbs_path;              ///< how long to wait for a path reservation.
 	uint8_t  path_backoff_interval;          ///< ticks between checks for a free path.
 

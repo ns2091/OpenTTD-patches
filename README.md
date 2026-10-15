@@ -54,6 +54,9 @@ The TT-Forums thread for this patchpack can be found [here](https://www.tt-forum
 * Add information about train full and empty loads and achievable speeds to the train info window.
 * Add setting to sort track types by category and speed.
 * Add a setting for whether to pathfind up to back of a one-way path signal.
+* Train route planning over the whole order list.  
+  The shortest route from the first to the last order is planned in advance, including the paths to all reachable platforms of each station.
+  Trains follow the planned paths between stations, and use the platform with the shortest total route which is not occupied or reserved by another train.
 * Multi-aspect signal graphics.  
   This requires a NewGRF which supports this and realistic train braking.
 * No-entry signals.  

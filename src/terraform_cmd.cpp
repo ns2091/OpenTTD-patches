@@ -27,6 +27,10 @@
 #include "3rdparty/cpp-btree/btree_map.h"
 
 #include "diagonal_tunnel.h"
+#include "train_route_plan.h"
+#include "station_map.h"
+#include "road_map.h"
+#include "tunnelbridge_map.h"
 
 #include "safeguards.h"
 
@@ -312,6 +316,10 @@ CommandCost CmdTerraformLand(DoCommandFlags flags, TileIndex tile, Slope slope, 
 	if (flags.Test(DoCommandFlag::Execute)) {
 		/* Mark affected areas dirty. */
 		for (const auto &t : ts.dirty_tiles) {
+			/* Slopes affect the costs of the train route plans. */
+			if (IsTileType(t, TileType::Railway) || HasStationTileRail(t) || IsLevelCrossingTile(t) || IsRailTunnelBridgeTile(t)) {
+				InvalidateTrainRoutePlans(t);
+			}
 			MarkTileDirtyByTile(t);
 			TileIndexToHeightMap::const_iterator new_height = ts.tile_to_new_height.find(t);
 			if (new_height == ts.tile_to_new_height.end()) continue;

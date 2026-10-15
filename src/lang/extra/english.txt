@@ -193,6 +193,8 @@ STR_CONFIG_SETTING_NON_LEADING_ENGINES_KEEP_NAME_HELPTEXT       :Whether train e
 
 STR_CONFIG_SETTING_BACK_ONE_WAY_PBS_SAFE_WAITING                :Pathfind up to back of one-way path signals: {STRING2}
 STR_CONFIG_SETTING_BACK_ONE_WAY_PBS_SAFE_WAITING_HELPTEXT       :When enabled, the train pathfinder may pathfind up to the back of a one-way path signal.
+STR_CONFIG_SETTING_TRAIN_ROUTE_PLAN                             :Plan train routes over the whole order list: {STRING2}
+STR_CONFIG_SETTING_TRAIN_ROUTE_PLAN_HELPTEXT                    :When enabled, the shortest route from the first to the last order of each train's order list is planned in advance, including the paths to all reachable platforms of each station. Between stations trains follow the planned paths, and where several platforms can be used, they use the platform with the shortest total route which is not occupied or reserved by another train.{}The route plans are updated automatically when the track layout, the orders or the settings change.
 
 STR_CONFIG_SETTING_INFLATION_FIXED_DATES                        :Apply inflation from 1920 to 2090: {STRING2}
 STR_CONFIG_SETTING_INFLATION_FIXED_DATES_HELPTEXT               :If enabled, inflation is always applied from 1920 to 2090, regardless of the game start date. This is the inflation model used since OpenTTD 1.11.{}If disabled, inflation is applied from the game start date for 170 years. This is the inflation model used until OpenTTD 1.10.

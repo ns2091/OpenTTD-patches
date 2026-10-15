@@ -172,6 +172,9 @@ STR_ERROR_PROTECTED                                             :{WHITE}この�
 
 STR_CONFIG_SETTING_CYCLE_SIGNAL_PBS                             :パス・一方通行パス
 
+STR_CONFIG_SETTING_TRAIN_ROUTE_PLAN                             :指令全体で列車の経路を計画: {STRING}
+STR_CONFIG_SETTING_TRAIN_ROUTE_PLAN_HELPTEXT                    :有効にすると、各列車の指令の始点から終点までの最短経路を、各停留場の到達しうるすべてのホームへの経路も含めて事前に計画します。駅間では列車は計画された経路に従って走行し、複数のホームを使用できる場合は、他の列車が在線または予約していないホームのうち、全体の経路が最短になるものを使用します。{}線路配置・指令・設定が変更されると経路計画は自動的に更新されます
+
 STR_WARNING_PASSWORD_SECURITY                                   :{YELLOW}警告: サーバーの管理者はここに入力された文章をすべて読めます。
 STR_NETWORK_NEED_COMPANY_PASSWORD_CAPTION                       :{WHITE}この会社は保護されています。経営に参画するにはパスワードを入力してください
 STR_NETWORK_CLIENT_LIST_ADMIN_COMPANY_UNLOCK                    :パスワードのアンロック

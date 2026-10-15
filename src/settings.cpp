@@ -54,6 +54,7 @@
 #include "window_func.h"
 #include "core/backup_type.hpp"
 #include "core/string_consumer.hpp"
+#include "train_route_plan.h"
 
 #include "sl/saveload.h"
 
@@ -1929,6 +1930,9 @@ CommandCost CmdChangeSetting(DoCommandFlags flags, const std::string &name, int3
 		SCOPE_INFO_FMT([=], "CmdChangeSetting: {} -> {}", sd->name, value);
 
 		sd->AsIntSetting()->ChangeValue(&GetGameSettings(), value, ConfigSaveFlagsUsingGameSettingsFor(sd));
+
+		/* Many settings affect the costs of the train route plans. */
+		InvalidateTrainRoutePlans();
 	}
 
 	return CommandCost();

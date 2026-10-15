@@ -12,6 +12,7 @@
 
 #include "../../tile_type.h"
 #include "../../track_type.h"
+#include "../../train_route_plan.h"
 
 /**
  * Base class for segment cost cache providers. Contains global counter
@@ -37,11 +38,15 @@ struct CSegmentCostCacheBase {
 inline void YapfNotifyTrackLayoutChange(TileIndex tile, Track track)
 {
 	CSegmentCostCacheBase::NotifyTrackLayoutChange();
+	InvalidateTrainRoutePlans(tile);
 }
 
 inline void YapfNotifyTrackLayoutChange(TileIndex tile, TrackBits tracks)
 {
-	if (tracks != TRACK_BIT_NONE) CSegmentCostCacheBase::NotifyTrackLayoutChange();
+	if (tracks != TRACK_BIT_NONE) {
+		CSegmentCostCacheBase::NotifyTrackLayoutChange();
+		InvalidateTrainRoutePlans(tile);
+	}
 }
 
 #endif /* YAPF_CACHE_H */

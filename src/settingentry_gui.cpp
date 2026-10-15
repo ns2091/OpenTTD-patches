@@ -997,6 +997,7 @@ SettingsContainer &GetSettingsTree()
 				routing->Add(new SettingEntry("difficulty.train_flip_reverse_allowed"));
 				routing->Add(new SettingEntry("pf.reverse_at_signals"));
 				routing->Add(new SettingEntry("pf.back_of_one_way_pbs_waiting_point"));
+				routing->Add(new SettingEntry("pf.train_route_plan"));
 				routing->Add(new SettingEntry("pf.forbid_90_deg"));
 				routing->Add(new SettingEntry("pf.reroute_rv_on_layout_change"));
 				routing->Add(new SettingEntry("vehicle.drive_through_train_depot"));

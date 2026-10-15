@@ -15,7 +15,9 @@
 #include "../../vehicle_type.h"
 #include "../../ship.h"
 #include "../../roadveh.h"
+#include "../../station_type.h"
 #include "../pathfinder_type.h"
+#include <vector>
 
 /**
  * Finds the best path for given ship using YAPF.
@@ -100,5 +102,38 @@ bool YapfTrainCheckDepotReverse(const Train *v, TileIndex forward_depot, TileInd
  * @return True if the path could be extended to a safe tile.
  */
 bool YapfTrainFindNearestSafeTile(const Train *v, TileIndex tile, Trackdir td, bool override_railtype);
+
+/** Origin of a train route plan search: the departure from an arrival state at a stop. */
+struct YapfRoutePlanSearchOrigin {
+	TileIndex forward_tile;  ///< Start tile when continuing in the direction of arrival.
+	Trackdir forward_td;     ///< Start trackdir when continuing in the direction of arrival.
+	TileIndex reverse_tile;  ///< Start tile when reversing, or INVALID_TILE if the train may not reverse.
+	Trackdir reverse_td;     ///< Start trackdir when reversing.
+	bool reverse_penalised;  ///< Whether the train prefers not to reverse (it can't be driven from the other end).
+};
+
+/** An arrival state found by a train route plan search. */
+struct YapfRoutePlanSearchTarget {
+	TileIndex tile; ///< Platform end tile.
+	Trackdir td;    ///< Direction of travel.
+	int cost;       ///< Cost of the best path to this arrival state.
+};
+
+/** Result of a train route plan search. */
+struct YapfRoutePlanSearchResult {
+	std::vector<YapfRoutePlanSearchTarget> targets; ///< Arrival states found, in order of increasing cost.
+	std::vector<uint32_t> keys;                     ///< Node keys of the best paths to the targets (unsorted, may contain duplicates).
+	int margin = 0;                                 ///< Cost margin beyond the best target within which other targets were searched.
+};
+
+/**
+ * Search the paths from a departure state to all reachable arrival states at a station or waypoint, using static costs only.
+ * The result only depends on the static game state and the railtypes, owner, length and reversing ability of the train.
+ * @param v The train to search the paths for.
+ * @param origin The departure state.
+ * @param dest The destination station or waypoint.
+ * @param[out] result The arrival states and paths found.
+ */
+void YapfTrainRoutePlanSearch(const Train *v, const YapfRoutePlanSearchOrigin &origin, StationID dest, YapfRoutePlanSearchResult &result);
 
 #endif /* YAPF_H */

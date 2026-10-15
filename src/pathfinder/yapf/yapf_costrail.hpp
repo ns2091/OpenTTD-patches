@@ -51,6 +51,7 @@ protected:
 	bool disable_cache = false;
 	std::vector<int> sig_look_ahead_costs = {};
 	bool treat_first_red_two_way_signal_as_eol = false;
+	bool route_plan_static_costs = false; ///< Only use costs which do not depend on dynamic state (signal states, reservations, routing restrictions, current order), for route planning.
 	TraceRestrictProgramInputFlags tracerestrict_flags = {};
 
 public:
@@ -101,6 +102,17 @@ public:
 	void SetTraceRestrictProgramInputFlags(TraceRestrictProgramInputFlags flags)
 	{
 		this->tracerestrict_flags = flags;
+	}
+
+	/**
+	 * Only use costs which depend on static game state, for train route planning.
+	 * Signal states, reservations, routing restrictions, speed limits and the current order of the vehicle are ignored.
+	 * This disables the look-ahead, so that the segment cost cache can be used everywhere.
+	 */
+	void SetRoutePlanStaticCosts()
+	{
+		this->route_plan_static_costs = true;
+		this->sig_look_ahead_costs.clear();
 	}
 
 	inline int SlopeCost(TileIndex tile, Trackdir td)
@@ -410,7 +422,7 @@ public:
 				n.segment->end_segment_reason.Set(EndSegmentReason::DeadEnd);
 			} else {
 				if (has_signal_along) {
-					SignalState sig_state = GetSignalStateByTrackdir(tile, trackdir);
+					SignalState sig_state = this->route_plan_static_costs ? SignalState::Green : GetSignalStateByTrackdir(tile, trackdir);
 					SignalType sig_type = GetSignalType(tile, TrackdirToTrack(trackdir));
 
 					if (IsNoEntrySignal(sig_type)) {
@@ -511,7 +523,8 @@ public:
 						}
 
 						if (!no_add_cost) {
-							cost += n.num_signals_passed < Yapf().PfGetSettings().rail_look_ahead_max_signals ? Yapf().PfGetSettings().rail_pbs_signal_back_penalty : 0;
+							/* With static costs the penalty must not depend on the path taken, as the segment costs are cached. */
+							cost += (this->route_plan_static_costs || n.num_signals_passed < Yapf().PfGetSettings().rail_look_ahead_max_signals) ? Yapf().PfGetSettings().rail_pbs_signal_back_penalty : 0;
 						}
 					}
 				}
@@ -654,7 +667,7 @@ public:
 					/* We know also the reason why the segment ends. */
 					end_segment_reason = segment.end_segment_reason;
 					/* We will need also some information about the last signal (if it was red). */
-					if (segment.last_signal_tile != INVALID_TILE) {
+					if (segment.last_signal_tile != INVALID_TILE && !this->route_plan_static_costs) {
 						dbg_assert_tile(HasSignalOnTrackdir(segment.last_signal_tile, segment.last_signal_td), segment.last_signal_tile);
 						SignalState sig_state = GetSignalStateByTrackdir(segment.last_signal_tile, segment.last_signal_td);
 						bool is_red = (sig_state == SignalState::Red);
@@ -705,7 +718,7 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 				end_segment_reason.Set(EndSegmentReason::Depot);
 
 			} else if (cur.tile_type == TileType::Station && IsRailWaypoint(cur.tile)) {
-				if (v->current_order.IsType(OT_GOTO_WAYPOINT) &&
+				if (!this->route_plan_static_costs && v->current_order.IsType(OT_GOTO_WAYPOINT) &&
 						GetStationIndex(cur.tile) == v->current_order.GetDestination() &&
 						!Waypoint::Get(v->current_order.GetDestination().ToStationID())->IsSingleTile()) {
 					/* This waypoint is our destination; maybe this isn't an unreserved
@@ -936,6 +949,9 @@ no_entry_cost: // jump here at the beginning if the node has no parent (it is th
 				/* Add penalty for the inappropriate platform length. */
 				extra_cost += PlatformLengthPenalty(platform_length);
 			}
+
+			/* Destination specific extra cost (e.g. from the route plan). */
+			extra_cost += Yapf().PfDestinationExtraCost(cur.tile, cur.td);
 		}
 
 		if (has_parent && n.flags_u.flags_s.teleport) {

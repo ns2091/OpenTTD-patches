@@ -198,6 +198,56 @@ public:
 	}
 
 	/**
+	 * Search for all destinations, instead of only the best one:
+	 *   - destination nodes are reported to the callback and are not followed further
+	 *   - the main loop stops if:
+	 *      - the open list is empty
+	 *      - or the cost estimate of the best open node exceeds the bound returned by the callback
+	 *      - or the maximum amount of loops reached - max_search_nodes
+	 * Startup nodes are never treated as a destination.
+	 * @param v The vehicle to find the paths for.
+	 * @param on_destination Callback: int(Node &node, int bound), called for each destination node in order of cost estimate, returns the new bound.
+	 */
+	template <typename F>
+	inline void FindAllDestinations(const VehicleType *v, F on_destination)
+	{
+		this->vehicle = v;
+
+		Yapf().PfSetStartupNodes();
+
+		int bound = INT_MAX;
+		for (;;) {
+			this->num_steps++;
+			Node *best_open_node = this->nodes.GetBestOpenNode();
+			if (best_open_node == nullptr) break;
+			if (best_open_node->GetCostEstimate() > bound) break;
+
+			this->nodes.DequeueBestOpenNode();
+			if (best_open_node->parent != nullptr && Yapf().PfDetectDestination(*best_open_node)) {
+				bound = on_destination(*best_open_node, bound);
+			} else {
+				Yapf().PfFollowNode(*best_open_node);
+			}
+			if (this->max_search_nodes == 0 || this->nodes.ClosedCount() < this->max_search_nodes) {
+				this->nodes.PopAlreadyDequeuedOpenNode(best_open_node->GetKey());
+				this->nodes.InsertClosedNode(*best_open_node);
+			} else {
+				this->nodes.ReenqueueOpenNode(*best_open_node);
+				break;
+			}
+		}
+	}
+
+	/**
+	 * Check whether the last search reached a destination.
+	 * @return true iff a destination node was found.
+	 */
+	inline bool IsDestinationFound() const
+	{
+		return this->best_dest_node != nullptr;
+	}
+
+	/**
 	 * If path was found return the best node that has reached the destination. Otherwise
 	 *  return the best visited node (which was nearest to the destination).
 	 * @return The best node, or best intermediate node.

@@ -19,6 +19,7 @@
 #include "../depot_map.h"
 #include "../infrastructure_func.h"
 #include "../diagonal_tunnel.h"
+#include "../train_route_plan.h"
 #include "pathfinder_func.h"
 
 /**
@@ -560,5 +561,24 @@ typedef CFollowTrackT<TransportType::Rail, Train, false> CFollowTrackRailNo90;
 
 typedef CFollowTrackT<TransportType::Rail, Train, true, true> CFollowTrackFreeRail;
 typedef CFollowTrackT<TransportType::Rail, Train, false, true> CFollowTrackFreeRailNo90;
+
+/**
+ * Track follower for train route planning: records the tiles it examines,
+ * so that route plans can be invalidated when any of these tiles change.
+ */
+template <class Tbase>
+struct CFollowTrackRoutePlanT : Tbase {
+	using Tbase::Tbase;
+
+	inline bool Follow(TileIndex old_tile, Trackdir old_td)
+	{
+		bool result = this->Tbase::Follow(old_tile, old_td);
+		RecordTrainRoutePlanTiles(old_tile, this->new_tile);
+		return result;
+	}
+};
+
+typedef CFollowTrackRoutePlanT<CFollowTrackRail> CFollowTrackRailRoutePlan;
+typedef CFollowTrackRoutePlanT<CFollowTrackRailNo90> CFollowTrackRailNo90RoutePlan;
 
 #endif /* FOLLOW_TRACK_HPP */

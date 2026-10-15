@@ -633,6 +633,8 @@ add_files(
     train_cmd.cpp
     train_cmd.h
     train_gui.cpp
+    train_route_plan.cpp
+    train_route_plan.h
     train_settings.h
     train_speed_adaptation.h
     transparency.h

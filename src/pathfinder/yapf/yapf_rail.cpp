@@ -62,6 +62,9 @@ template <typename Tpf> void DumpState(Tpf &pf1, Tpf &pf2)
 	fwrite(dmp2.output_buffer.data(), 1, dmp2.output_buffer.size(), *f2);
 }
 
+/** Penalty for reversing a train which would then have to be driven backwards. */
+constexpr int DRIVING_BACKWARDS_PENALTY = 100 * YAPF_TILE_LENGTH;
+
 template <class Node>
 struct CYapfReserveTrackSafePositionNodes {
 	inline static std::vector<Node *> safe_position_nodes;
@@ -338,7 +341,8 @@ public:
 		if (target != nullptr) target->okay = true;
 
 		if (Yapf().CanUseGlobalCache(*this->res_dest_node)) {
-			YapfNotifyTrackLayoutChange(INVALID_TILE, INVALID_TRACK);
+			/* Route plans don't depend on reservations, so only the segment cost cache needs to be flushed. */
+			CSegmentCostCacheBase::NotifyTrackLayoutChange();
 		}
 
 		return true;
@@ -603,6 +607,7 @@ public:
 			}
 			if (rev_node != nullptr && length >= v->gcache.cached_total_length) {
 				if (follower.Follow(rev_node->GetLastTile(), ReverseTrackdir(rev_node->GetLastTrackdir()))) {
+					Yapf().RoutePlanFilterChoices(follower);
 					Yapf().AddMultipleNodes(&old_node, follower, [&](Node &n) {
 						n.flags_u.flags_s.reverse_pending = false;
 						n.flags_u.flags_s.teleport = true;
@@ -614,6 +619,7 @@ public:
 			}
 		}
 		if (follower.Follow(old_node.GetLastTile(), old_node.GetLastTrackdir())) {
+			Yapf().RoutePlanFilterChoices(follower);
 			Yapf().AddMultipleNodes(&old_node, follower);
 		}
 	}
@@ -626,17 +632,41 @@ public:
 
 	static Trackdir stChooseRailTrack(const Train *v, TileIndex tile, DiagDirection enterdir, TrackBits tracks, bool &path_found, bool reserve_track, PBSTileInfo *target, TileIndex *dest)
 	{
+		const TrainRoutePlanGuide *guide = GetTrainRoutePlanGuide(v);
+		if (guide != nullptr && guide->HasPlannedPaths()) {
+			/* First only follow the planned paths. If no destination can be reached that way,
+			 * e.g. because a planned path is denied by a routing restriction, search all paths. */
+			bool restricted_path_found = false;
+			bool destination_found = false;
+			Trackdir result = stChooseRailTrackWithGuide(v, tile, enterdir, tracks, restricted_path_found, reserve_track, target, dest, guide, true, destination_found);
+			if (destination_found) {
+				path_found = restricted_path_found;
+				return result;
+			}
+		}
+
+		bool destination_found;
+		return stChooseRailTrackWithGuide(v, tile, enterdir, tracks, path_found, reserve_track, target, dest, guide, false, destination_found);
+	}
+
+	static Trackdir stChooseRailTrackWithGuide(const Train *v, TileIndex tile, DiagDirection enterdir, TrackBits tracks, bool &path_found, bool reserve_track, PBSTileInfo *target, TileIndex *dest,
+			const TrainRoutePlanGuide *guide, bool plan_only, bool &destination_found)
+	{
 		/* create pathfinder instance */
 		Tpf pf1;
+		pf1.SetRoutePlanGuide(guide, plan_only);
 		Trackdir result1;
 
 		if (GetDebugLevel(DebugLevelID::yapfdesync) < 1 && GetDebugLevel(DebugLevelID::desync) < 2) {
 			result1 = pf1.ChooseRailTrack(v, tile, enterdir, tracks, path_found, reserve_track, target, dest);
+			destination_found = pf1.IsDestinationFound();
 		} else {
 			result1 = pf1.ChooseRailTrack(v, tile, enterdir, tracks, path_found, false, nullptr, nullptr);
 			Tpf pf2;
+			pf2.SetRoutePlanGuide(guide, plan_only);
 			pf2.DisableCache(true);
 			Trackdir result2 = pf2.ChooseRailTrack(v, tile, enterdir, tracks, path_found, reserve_track, target, dest);
+			destination_found = pf2.IsDestinationFound();
 			if (result1 != result2) {
 				Debug(desync, 0, "CACHE ERROR: ChooseRailTrack() = [{}, {}]", result1, result2);
 				DumpState(pf1, pf2);
@@ -703,11 +733,29 @@ public:
 
 	static bool stCheckReverseTrain(const Train *v, TileIndex t1, Trackdir td1, TileIndex t2, Trackdir td2, int reverse_penalty, TraceRestrictProgramInputFlags tracerestrict_flags)
 	{
+		const TrainRoutePlanGuide *guide = GetTrainRoutePlanGuide(v);
+		if (guide != nullptr && guide->HasPlannedPaths()) {
+			/* First only follow the planned paths, see stChooseRailTrack. */
+			bool destination_found = false;
+			bool result = stCheckReverseTrainWithGuide(v, t1, td1, t2, td2, reverse_penalty, tracerestrict_flags, guide, true, destination_found);
+			if (destination_found) return result;
+		}
+
+		bool destination_found;
+		return stCheckReverseTrainWithGuide(v, t1, td1, t2, td2, reverse_penalty, tracerestrict_flags, guide, false, destination_found);
+	}
+
+	static bool stCheckReverseTrainWithGuide(const Train *v, TileIndex t1, Trackdir td1, TileIndex t2, Trackdir td2, int reverse_penalty, TraceRestrictProgramInputFlags tracerestrict_flags,
+			const TrainRoutePlanGuide *guide, bool plan_only, bool &destination_found)
+	{
 		Tpf pf1;
+		pf1.SetRoutePlanGuide(guide, plan_only);
 		bool result1 = pf1.CheckReverseTrain(v, t1, td1, t2, td2, reverse_penalty, tracerestrict_flags);
+		destination_found = pf1.IsDestinationFound();
 
 		if (GetDebugLevel(DebugLevelID::yapfdesync) > 0 || GetDebugLevel(DebugLevelID::desync) >= 2) {
 			Tpf pf2;
+			pf2.SetRoutePlanGuide(guide, plan_only);
 			pf2.DisableCache(true);
 			bool result2 = pf2.CheckReverseTrain(v, t1, td1, t2, td2, reverse_penalty, tracerestrict_flags);
 			if (result1 != result2) {
@@ -743,6 +791,83 @@ public:
 		/* check if it was reversed origin */
 		bool reversed = (node->cost != 0);
 		return reversed;
+	}
+};
+
+/** Node follower for train route planning: searches the paths to all platforms of a station or waypoint, using static costs. */
+template <class Types>
+class CYapfFollowRoutePlanRailT {
+public:
+	typedef typename Types::Tpf Tpf; ///< the pathfinder class (derived from THIS class)
+	typedef typename Types::TrackFollower TrackFollower;
+	typedef typename Types::NodeList::Item Node; ///< this will be our node type
+	typedef typename Node::Key Key; ///< key to hash tables
+
+protected:
+	/** @copydoc CYapfBaseT::Yapf */
+	inline Tpf &Yapf()
+	{
+		return *static_cast<Tpf *>(this);
+	}
+
+public:
+	/** @copydoc CYapfBaseT::PfFollowNode */
+	inline void PfFollowNode(Node &old_node)
+	{
+		TrackFollower follower{Yapf().GetVehicle(), Yapf().GetCompatibleRailTypes()};
+		if (follower.Follow(old_node.GetLastTile(), old_node.GetLastTrackdir())) {
+			Yapf().AddMultipleNodes(&old_node, follower);
+		}
+	}
+
+	/** @copydoc CYapfBaseT::TransportTypeCharFunc */
+	inline char TransportTypeChar() const
+	{
+		return 't';
+	}
+
+	/**
+	 * Get the margin of the cost beyond the best target, within which further targets are searched.
+	 * @param best_cost The cost of the best target.
+	 * @return The margin.
+	 */
+	static int GetTargetMargin(int best_cost)
+	{
+		return Clamp(best_cost / 2, 16 * YAPF_TILE_LENGTH, 128 * YAPF_TILE_LENGTH);
+	}
+
+	void RoutePlanSearch(const Train *v, const YapfRoutePlanSearchOrigin &origin, StationID dest, YapfRoutePlanSearchResult &result)
+	{
+		/* Prefer not to reverse when the train can't be driven from the other end, see YapfTrainCheckReverse. */
+		const int reverse_penalty = origin.reverse_penalised ? DRIVING_BACKWARDS_PENALTY : 1;
+
+		/* All examined tiles must be seen by the track follower, so that they are recorded. */
+		Yapf().DisableCache(true);
+		Yapf().SetRoutePlanStaticCosts();
+		Yapf().SetOrigin(origin.forward_tile, origin.forward_td, origin.reverse_tile, origin.reverse_td, reverse_penalty);
+		Yapf().SetDestination(v, dest);
+
+		Yapf().FindAllDestinations(v, [&](Node &n, int bound) -> int {
+			const TileIndex tile = n.GetLastTile();
+			const Trackdir td = n.GetLastTrackdir();
+
+			/* The first path found to an arrival state is the best one. */
+			for (const YapfRoutePlanSearchTarget &target : result.targets) {
+				if (target.tile == tile && target.td == td) return bound;
+			}
+
+			result.targets.push_back({ tile, td, n.cost });
+			for (const Node *node = &n; node != nullptr; node = node->parent) {
+				result.keys.push_back(GetTrainRoutePlanNodeKey(node->GetTile(), node->GetTrackdir()));
+			}
+
+			if (result.targets.size() == 1) {
+				/* Only search for other targets which are not much worse than the best one. */
+				result.margin = GetTargetMargin(n.cost);
+				return n.cost + result.margin;
+			}
+			return bound;
+		});
 	}
 };
 
@@ -795,6 +920,9 @@ struct CYapfAnyDepotRailNo90 : CYapfRailBase<CYapfRail_TypesT<CYapfAnyDepotRailN
 struct CYapfAnySafeTileRail     : CYapfRailBase<CYapfRail_TypesT<CYapfAnySafeTileRail    , CFollowTrackFreeRail    , CYapfDestinationAnySafeTileRailT , CYapfFollowAnySafeTileRailT>> {};
 struct CYapfAnySafeTileRailNo90 : CYapfRailBase<CYapfRail_TypesT<CYapfAnySafeTileRailNo90, CFollowTrackFreeRailNo90, CYapfDestinationAnySafeTileRailT , CYapfFollowAnySafeTileRailT>> {};
 
+struct CYapfRoutePlanRail     : CYapfRailBase<CYapfRail_TypesT<CYapfRoutePlanRail    , CFollowTrackRailRoutePlan    , CYapfDestinationRoutePlanRailT, CYapfFollowRoutePlanRailT>> {};
+struct CYapfRoutePlanRailNo90 : CYapfRailBase<CYapfRail_TypesT<CYapfRoutePlanRailNo90, CFollowTrackRailNo90RoutePlan, CYapfDestinationRoutePlanRailT, CYapfFollowRoutePlanRailT>> {};
+
 
 Track YapfTrainChooseTrack(const Train *v, TileIndex tile, DiagDirection enterdir, TrackBits tracks, bool &path_found, bool reserve_track, PBSTileInfo *target, TileIndex *dest)
 {
@@ -827,8 +955,6 @@ static bool YapfTrainCheckReverse(const Train *v, TileIndex tile, Trackdir td, T
 
 	return reverse != swapped;
 }
-
-constexpr int DRIVING_BACKWARDS_PENALTY = 100 * YAPF_TILE_LENGTH;
 
 bool YapfTrainCheckReverse(const Train *v)
 {
@@ -927,6 +1053,17 @@ bool YapfTrainFindNearestSafeTile(const Train *v, TileIndex tile, Trackdir td, b
 	return _settings_game.pf.forbid_90_deg
 		? CYapfAnySafeTileRailNo90::stFindNearestSafeTile(v, tile, td, override_railtype)
 		: CYapfAnySafeTileRail::stFindNearestSafeTile(v, tile, td, override_railtype);
+}
+
+void YapfTrainRoutePlanSearch(const Train *v, const YapfRoutePlanSearchOrigin &origin, StationID dest, YapfRoutePlanSearchResult &result)
+{
+	if (_settings_game.pf.forbid_90_deg) {
+		CYapfRoutePlanRailNo90 pf;
+		pf.RoutePlanSearch(v, origin, dest, result);
+	} else {
+		CYapfRoutePlanRail pf;
+		pf.RoutePlanSearch(v, origin, dest, result);
+	}
 }
 
 /** if any track changes, this counter is incremented - that will invalidate segment cost cache */
