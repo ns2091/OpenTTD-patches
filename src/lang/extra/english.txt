@@ -1396,7 +1396,7 @@ STR_TOWN_VIEW_NOISE_IN_TOWN_NO_LIMIT                            :{BLACK}Noise li
 STR_TOWN_VIEW_CARGO_LAST_PRODUCTION_INTERVAL_MAX                :{BLACK}{CARGO_LIST} last interval: {ORANGE}{COMMA}{BLACK}  max: {ORANGE}{COMMA}
 
 STR_TOWN_VIEW_RESET_BUTTON                                      :{BLACK}Reset
-STR_TOWN_VIEW_RESET_TOOLTIP                                     :{BLACK}Remove all buildings and roads of this town, reverting its development. Roads not owned by the town are also removed within the local authority distance or the town zone
+STR_TOWN_VIEW_RESET_TOOLTIP                                     :{BLACK}Remove all buildings and roads of this town, reverting its development. Roads not owned by the town, road depots and road stops are also removed within the local authority distance or the town zone. Road vehicles on removed tiles are deleted
 
 ###length 6
 STR_LOCAL_AUTHORITY_SETTING_OVERRIDE_ALLOW_ROADS                :Allowed to build roads

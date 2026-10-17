@@ -13,6 +13,7 @@
 #include "road.h"
 #include "road_internal.h" /* Cleaning up road bits */
 #include "road_cmd.h"
+#include "roadveh.h"
 #include "landscape.h"
 #include "landscape_cmd.h"
 #include "viewport_func.h"
@@ -3813,8 +3814,8 @@ static bool IsTileInTownResetArea(TileIndex tile, const Town *t, uint32_t square
 
 /**
  * Reset a town to an undeveloped state by removing all of its houses and roads (scenario editor only).
- * Town owned roads are always removed, roads with any other owner are removed when they are within the area of the town.
- * Rail on level crossings, road depots and road stops are kept.
+ * Town owned roads are always removed. Roads with any other owner, road depots and road stops are removed when they are within the area of the town.
+ * Road vehicles on any of the removed tiles are deleted. Rail on level crossings is kept.
  * @param flags Type of operation.
  * @param town_id Town ID to reset.
  * @return The cost of this operation or an error.
@@ -3827,6 +3828,51 @@ CommandCost CmdResetTown(DoCommandFlags flags, TownID town_id)
 
 	/* Removing houses shrinks the town zones, so determine the area of the town before removing anything. */
 	const uint32_t squared_edge_radius = t->cache.squared_town_zone_radius[to_underlying(HouseZone::TownEdge)];
+	auto in_area = [&](TileIndex tile) { return IsTileInTownResetArea(tile, t, squared_edge_radius); };
+
+	auto is_removed_tunnel_bridge_end = [&](TileIndex tile) {
+		if (IsTileOwner(tile, OWNER_TOWN)) return TestTownOwnsBridge(tile, t);
+		return in_area(tile) && CalcClosestTownFromTile(tile) == t;
+	};
+
+	/* Bridges and tunnels do not have a town index, so they can only be checked while the adjacent roads still exist. */
+	auto is_removed = [&](TileIndex tile) -> bool {
+		switch (GetTileType(tile)) {
+			case TileType::House:
+				return GetTownIndex(tile) == t->index;
+
+			case TileType::Road:
+				if (IsRoadDepot(tile)) return Depot::GetByTile(tile)->town == t && in_area(tile);
+				return GetTownIndex(tile) == t->index && (HasTownOwnedRoad(tile) || in_area(tile));
+
+			case TileType::Station:
+				return IsAnyRoadStop(tile) && BaseStation::GetByTile(tile)->town == t && (HasTownOwnedRoad(tile) || in_area(tile));
+
+			case TileType::TunnelBridge:
+				return GetTunnelBridgeTransportType(tile) == TransportType::Road &&
+						(is_removed_tunnel_bridge_end(tile) || is_removed_tunnel_bridge_end(GetOtherTunnelBridgeEnd(tile)));
+
+			default:
+				return false;
+		}
+	};
+
+	if (flags.Test(DoCommandFlag::Execute)) {
+		/* Road vehicles would prevent removing the tiles they are on. */
+		std::vector<RoadVehicle *> vehicles;
+		for (RoadVehicle *v : RoadVehicle::IterateFrontOnly()) {
+			for (const RoadVehicle *u = v; u != nullptr; u = u->Next()) {
+				if (is_removed(u->tile)) {
+					vehicles.push_back(v);
+					break;
+				}
+			}
+		}
+		for (RoadVehicle *v : vehicles) delete v;
+	}
+
+	/* Remove everything like flooding does, regardless of its owner and of any road works in progress. */
+	AutoRestoreBackup cur_company(_current_company, OWNER_WATER);
 
 	CommandCost cost(ExpensesType::Construction);
 	CommandCost last_error = CMD_ERROR;
@@ -3842,43 +3888,22 @@ CommandCost CmdResetTown(DoCommandFlags flags, TownID town_id)
 		}
 	};
 
-	/* Bridges and tunnels do not have a town index, so check them first while the adjacent roads still exist. */
 	for (TileIndex current_tile{0}; current_tile < Map::Size(); ++current_tile) {
-		if (!IsTileType(current_tile, TileType::TunnelBridge) || GetTunnelBridgeTransportType(current_tile) != TransportType::Road) continue;
-
-		bool try_clear;
-		if (IsTileOwner(current_tile, OWNER_TOWN)) {
-			try_clear = TestTownOwnsBridge(current_tile, t);
-		} else {
-			try_clear = IsTileInTownResetArea(current_tile, t, squared_edge_radius) && CalcClosestTownFromTile(current_tile) == t;
-		}
-		if (try_clear) handle_result(Command<Commands::LandscapeClear>::Do(flags, current_tile));
+		if (IsTileType(current_tile, TileType::TunnelBridge) && is_removed(current_tile)) handle_result(Command<Commands::LandscapeClear>::Do(flags, current_tile));
 	}
 
 	for (TileIndex current_tile{0}; current_tile < Map::Size(); ++current_tile) {
-		switch (GetTileType(current_tile)) {
-			case TileType::House:
-				if (GetTownIndex(current_tile) == t->index) handle_result(Command<Commands::LandscapeClear>::Do(flags, current_tile));
-				break;
+		if (IsTileType(current_tile, TileType::TunnelBridge) || !is_removed(current_tile)) continue;
 
-			case TileType::Road:
-				if (IsRoadDepot(current_tile) || GetTownIndex(current_tile) != t->index) break;
-				if (!HasTownOwnedRoad(current_tile) && !IsTileInTownResetArea(current_tile, t, squared_edge_radius)) break;
-
-				if (IsLevelCrossing(current_tile)) {
-					/* Only remove the road from level crossings, the rail stays. Tram tracks are removed before the road. */
-					for (RoadTramType rtt : { RoadTramType::Tram, RoadTramType::Road }) {
-						RoadType rt = GetRoadType(current_tile, rtt);
-						if (rt == INVALID_ROADTYPE) continue;
-						handle_result(Command<Commands::RemoveRoadLong>::Do(flags, current_tile, current_tile, rt, GetCrossingRoadAxis(current_tile), false, true));
-					}
-				} else {
-					handle_result(Command<Commands::LandscapeClear>::Do(flags, current_tile));
-				}
-				break;
-
-			default:
-				break;
+		if (IsLevelCrossingTile(current_tile)) {
+			/* Only remove the road from level crossings, the rail stays. Tram tracks are removed before the road. */
+			for (RoadTramType rtt : { RoadTramType::Tram, RoadTramType::Road }) {
+				RoadType rt = GetRoadType(current_tile, rtt);
+				if (rt == INVALID_ROADTYPE) continue;
+				handle_result(Command<Commands::RemoveRoadLong>::Do(flags, current_tile, current_tile, rt, GetCrossingRoadAxis(current_tile), false, true));
+			}
+		} else {
+			handle_result(Command<Commands::LandscapeClear>::Do(flags, current_tile));
 		}
 	}
 
