@@ -41,6 +41,7 @@ DEF_CMD_TUPLE_NT(Commands::TownRating,                    CmdTownRating,        
 DEF_CMD_TUPLE_NT(Commands::TownSetText,                   CmdTownSetText,   CMD_LOG_AUX | CMD_STR_CTRL | CMD_DEITY, CommandType::OtherManagement,       CmdDataT<TownID, EncodedString>)
 DEF_CMD_TUPLE_NT(Commands::ExpandTown,                    CmdExpandTown,                                 CMD_DEITY, CommandType::LandscapeConstruction, CmdDataT<TownID, uint32_t, TownExpandModes>)
 DEF_CMD_TUPLE_NT(Commands::DeleteTown,                    CmdDeleteTown,                               CMD_OFFLINE, CommandType::LandscapeConstruction, CmdDataT<TownID>)
+DEF_CMD_TUPLE_NT(Commands::ResetTown,                     CmdResetTown,                  CMD_OFFLINE | CMD_NO_TEST, CommandType::LandscapeConstruction, CmdDataT<TownID>) // in test mode nothing is removed, so multi-tile houses and bridges are counted more than once
 DEF_CMD_TUPLE   (Commands::PlaceHouse,                    CmdPlaceHouse,                                 CMD_DEITY, CommandType::OtherManagement,       CmdDataT<HouseID, bool, TownID, bool>)
 DEF_CMD_TUPLE   (Commands::PlaceHouseArea,                CmdPlaceHouseArea,                             CMD_DEITY, CommandType::OtherManagement,       CmdDataT<TileIndex, HouseIDCmdVector, bool, TownID, bool, bool>)
 DEF_CMD_TUPLE_NT(Commands::TownSettingOverride,           CmdOverrideTownSetting,           CMD_DEITY | CMD_SERVER, CommandType::OtherManagement,       CmdDataT<TownID, TownSettingOverrideFlags, bool, uint8_t>)

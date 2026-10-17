@@ -202,3 +202,7 @@ STR_ERROR_SITE_UNSUITABLE_FOR_DIAGONAL_TUNNEL                   :{WHITE}斜面�
 STR_ERROR_DIAGONAL_TUNNEL_EMERGES                               :{WHITE}適切な出口に達する前にトンネルが地上に出てしまいます
 STR_ERROR_NOT_POSSIBLE_ON_DIAGONAL_TUNNEL_PORTAL                :{WHITE}斜めトンネルの入り口では実行できません
 STR_LAI_RAIL_DESCRIPTION_DIAGONAL_TUNNEL                        :鉄道トンネル(斜め)
+
+STR_TOWN_VIEW_RESET_BUTTON                                      :{BLACK}リセット
+STR_TOWN_VIEW_RESET_TOOLTIP                                     :{BLACK}この街のすべての建物と道路を撤去し、街の発展を元に戻します。街が所有していない道路も、地方自治体の範囲内または街のゾーン内にあれば撤去されます
+STR_ERROR_CAN_T_RESET_TOWN                                      :{WHITE}街をリセットできません

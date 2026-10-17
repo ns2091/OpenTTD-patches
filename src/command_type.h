@@ -614,6 +614,7 @@ enum class Commands : uint8_t {
 	TownSetText,                            ///< set the custom text of a town
 	ExpandTown,                             ///< expand a town
 	DeleteTown,                             ///< delete a town
+	ResetTown,                              ///< remove all houses and roads of a town
 	PlaceHouse,                             ///< place a house
 	PlaceHouseArea,                         ///< place an area of houses
 

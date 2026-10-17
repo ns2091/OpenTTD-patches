@@ -732,6 +732,10 @@ public:
 				Command<Commands::DeleteTown>::Post(STR_ERROR_TOWN_CAN_T_DELETE, static_cast<TownID>(this->window_number));
 				break;
 
+			case WID_TV_RESET: // remove all houses and roads of town - only available on Scenario editor
+				Command<Commands::ResetTown>::Post(STR_ERROR_CAN_T_RESET_TOWN, static_cast<TownID>(this->window_number));
+				break;
+
 			case WID_TV_GRAPH: {
 				ShowTownCargoGraph(this->window_number);
 				break;
@@ -898,6 +902,7 @@ static constexpr std::initializer_list<NWidgetPart> _nested_town_editor_view_wid
 	EndContainer(),
 	NWidget(NWID_HORIZONTAL),
 		NWidget(WWT_PUSHTXTBTN, Colours::Brown, WID_TV_DELETE), SetFill(1, 1), SetResize(1, 0), SetStringTip(STR_TOWN_VIEW_DELETE_BUTTON, STR_TOWN_VIEW_DELETE_TOOLTIP),
+		NWidget(WWT_PUSHTXTBTN, Colours::Brown, WID_TV_RESET), SetFill(1, 1), SetResize(1, 0), SetStringTip(STR_TOWN_VIEW_RESET_BUTTON, STR_TOWN_VIEW_RESET_TOOLTIP),
 		NWidget(WWT_TEXTBTN, Colours::Brown, WID_TV_CATCHMENT), SetFill(1, 1), SetResize(1, 0), SetStringTip(STR_BUTTON_CATCHMENT, STR_TOOLTIP_CATCHMENT),
 		NWidget(WWT_RESIZEBOX, Colours::Brown),
 	EndContainer(),

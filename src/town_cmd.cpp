@@ -3800,6 +3800,95 @@ CommandCost CmdDeleteTown(DoCommandFlags flags, TownID town_id)
 }
 
 /**
+ * Check whether a tile is within the area which is removed when resetting a town.
+ * @param tile The tile to check.
+ * @param t The town being reset.
+ * @param squared_edge_radius Squared radius of the outermost house zone of the town, before anything was removed.
+ * @return True if the tile is within the local authority distance or the outermost house zone of the town.
+ */
+static bool IsTileInTownResetArea(TileIndex tile, const Town *t, uint32_t squared_edge_radius)
+{
+	return DistanceManhattan(tile, t->xy) < _settings_game.economy.dist_local_authority || DistanceSquare(tile, t->xy) <= squared_edge_radius;
+}
+
+/**
+ * Reset a town to an undeveloped state by removing all of its houses and roads (scenario editor only).
+ * Town owned roads are always removed, roads with any other owner are removed when they are within the area of the town.
+ * Rail on level crossings, road depots and road stops are kept.
+ * @param flags Type of operation.
+ * @param town_id Town ID to reset.
+ * @return The cost of this operation or an error.
+ */
+CommandCost CmdResetTown(DoCommandFlags flags, TownID town_id)
+{
+	if (_game_mode != GameMode::Editor) return CMD_ERROR;
+	Town *t = Town::GetIfValid(town_id);
+	if (t == nullptr) return CMD_ERROR;
+
+	/* Removing houses shrinks the town zones, so determine the area of the town before removing anything. */
+	const uint32_t squared_edge_radius = t->cache.squared_town_zone_radius[to_underlying(HouseZone::TownEdge)];
+
+	CommandCost cost(ExpensesType::Construction);
+	CommandCost last_error = CMD_ERROR;
+	bool had_success = false;
+	bool had_failure = false;
+	auto handle_result = [&](CommandCost ret) {
+		if (ret.Succeeded()) {
+			cost.AddCost(ret.GetCost());
+			had_success = true;
+		} else {
+			last_error = std::move(ret);
+			had_failure = true;
+		}
+	};
+
+	/* Bridges and tunnels do not have a town index, so check them first while the adjacent roads still exist. */
+	for (TileIndex current_tile{0}; current_tile < Map::Size(); ++current_tile) {
+		if (!IsTileType(current_tile, TileType::TunnelBridge) || GetTunnelBridgeTransportType(current_tile) != TransportType::Road) continue;
+
+		bool try_clear;
+		if (IsTileOwner(current_tile, OWNER_TOWN)) {
+			try_clear = TestTownOwnsBridge(current_tile, t);
+		} else {
+			try_clear = IsTileInTownResetArea(current_tile, t, squared_edge_radius) && CalcClosestTownFromTile(current_tile) == t;
+		}
+		if (try_clear) handle_result(Command<Commands::LandscapeClear>::Do(flags, current_tile));
+	}
+
+	for (TileIndex current_tile{0}; current_tile < Map::Size(); ++current_tile) {
+		switch (GetTileType(current_tile)) {
+			case TileType::House:
+				if (GetTownIndex(current_tile) == t->index) handle_result(Command<Commands::LandscapeClear>::Do(flags, current_tile));
+				break;
+
+			case TileType::Road:
+				if (IsRoadDepot(current_tile) || GetTownIndex(current_tile) != t->index) break;
+				if (!HasTownOwnedRoad(current_tile) && !IsTileInTownResetArea(current_tile, t, squared_edge_radius)) break;
+
+				if (IsLevelCrossing(current_tile)) {
+					/* Only remove the road from level crossings, the rail stays. Tram tracks are removed before the road. */
+					for (RoadTramType rtt : { RoadTramType::Tram, RoadTramType::Road }) {
+						RoadType rt = GetRoadType(current_tile, rtt);
+						if (rt == INVALID_ROADTYPE) continue;
+						handle_result(Command<Commands::RemoveRoadLong>::Do(flags, current_tile, current_tile, rt, GetCrossingRoadAxis(current_tile), false, true));
+					}
+				} else {
+					handle_result(Command<Commands::LandscapeClear>::Do(flags, current_tile));
+				}
+				break;
+
+			default:
+				break;
+		}
+	}
+
+	/* Some tiles could not be removed and nothing else was removed either. */
+	if (had_failure && !had_success) return last_error;
+
+	return cost;
+}
+
+/**
  * Get cost factors for a TownAction
  * @param action TownAction to get cost factor for.
  * @returns Cost factor.
