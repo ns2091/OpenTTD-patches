@@ -4962,6 +4962,174 @@ static bool CheckReverseTrain(const Train *consist)
 }
 
 /**
+ * Determine whether a train which is loading at a station could currently pass the first signal on the route
+ * it will take when it leaves the station, before reaching its next stop.
+ * The route is predicted as the train will choose it when departing: towards its next order, reversing first
+ * if it will do so, and following the path which it has already reserved.
+ * Nothing is reserved or changed by this check.
+ * @param consist The train.
+ * @return False if the first signal can not be passed yet, true if it can or if there is no signal before the next stop.
+ */
+static bool CanTrainPassFirstSignalAfterStation(Train *consist)
+{
+	if (consist->GetNumOrders() == 0) return true;
+
+	/* Pathfind towards the order which the train will head for when leaving the station. */
+	VehicleOrderSaver orders(consist);
+	const Order *real_order = consist->GetOrder(consist->cur_real_order_index);
+	const bool at_real_order = real_order != nullptr && real_order->IsType(OT_GOTO_STATION) && real_order->GetDestination() == consist->last_station_visited;
+	if (!orders.SwitchToNextOrder(at_real_order)) return true;
+
+	const Train *moving_front = consist->GetMovingFront();
+	const Train *moving_back = consist->GetMovingBack();
+	auto is_unusual_position = [](const Train *u) { return (u->track & TRACK_BIT_WORMHOLE) || u->track == TRACK_BIT_DEPOT; };
+	if (is_unusual_position(moving_front) || is_unusual_position(moving_back)) return true;
+
+	bool reverse = CheckReverseTrain(consist);
+	if (!reverse) {
+		/* A train at the end of the line turns around when departing. */
+		CFollowTrackRail ft(consist);
+		if (!ft.Follow(moving_front->tile, moving_front->GetVehicleTrackdir())) reverse = true;
+	}
+
+	bool pbs_section = false;
+	bool reserved_before_signal = false;
+	uint pbs_section_tiles = 0;
+	std::optional<bool> result;
+
+	/* Check a tile of the route, return false when the result is known. */
+	auto check_tile = [&](TileIndex tile, Trackdir td, bool own_reservation) -> bool {
+		const Track track = TrackdirToTrack(td);
+		const bool rail_signal = IsTileType(tile, TileType::Railway) && HasSignalOnTrackdir(tile, td);
+		const bool tunnel_bridge_signal = IsTunnelBridgeWithSignalSimulation(tile) && IsTunnelBridgeSignalSimulationEntrance(tile) && TrackdirEntersTunnelBridge(tile, td);
+		const bool stop_here = HasStationTileRail(tile) && consist->current_order.ShouldStopAtStation(consist, GetStationIndex(tile), IsRailWaypoint(tile));
+		const bool reserved = !own_reservation && TrackOverlapsTracks(GetReservedTrackbits(tile), track);
+
+		if (pbs_section) {
+			/* The track which has to be reserved to pass a path signal ends at the following signal or stop. */
+			if (reserved) {
+				result = false;
+			} else if (rail_signal || tunnel_bridge_signal || stop_here || IsRailDepotTile(tile) || ++pbs_section_tiles > 1024) {
+				result = true;
+			}
+			return !result.has_value();
+		}
+
+		if (stop_here) {
+			/* The next stop is reached before any signal. */
+			result = true;
+			return false;
+		}
+
+		if (!rail_signal && !tunnel_bridge_signal) {
+			if (reserved) reserved_before_signal = true;
+			return true;
+		}
+
+		/* This is the first signal on the route. */
+		const bool is_pbs = rail_signal ? IsPbsSignal(GetSignalType(tile, track)) : IsTunnelBridgeEffectivelyPBS(tile);
+		if (!is_pbs) {
+			result = (rail_signal ? GetSignalStateByTrackdir(tile, td) : GetTunnelBridgeEntranceSignalState(tile)) == SignalState::Green;
+		} else if (own_reservation) {
+			/* The train has already reserved its path through the signal. */
+			result = true;
+		} else if (reserved || reserved_before_signal) {
+			result = false;
+		} else {
+			/* A path signal can be passed if the track behind it is not reserved by another train. */
+			pbs_section = true;
+		}
+		return !result.has_value();
+	};
+
+	TileIndex tile;
+	Trackdir td;
+	if (reverse) {
+		tile = moving_back->tile;
+		td = ReverseTrackdir(moving_back->GetVehicleTrackdir());
+	} else {
+		Vehicle *other_train = nullptr;
+		const PBSTileInfo res = FollowTrainReservation(consist, &other_train);
+		/* The path ahead is already blocked by another train. */
+		if (other_train != nullptr && other_train->index != consist->index) return false;
+
+		/* Follow the path which the train has already reserved. */
+		tile = moving_front->tile;
+		td = moving_front->GetVehicleTrackdir();
+		CFollowTrackRail ft(consist->owner, consist->GetIndirectCompatibleRailTypes());
+		for (uint steps = 0; tile != res.tile || td != res.trackdir; steps++) {
+			/* If the reserved path can not be followed, don't hold the train. */
+			if (steps > 4096 || !ft.Follow(tile, td)) return true;
+			const TrackdirBits reserved = ft.new_td_bits & TrackBitsToTrackdirBits(GetReservedTrackbits(ft.new_tile));
+			if (reserved == TRACKDIR_BIT_NONE) return true;
+			tile = ft.new_tile;
+			td = FindFirstTrackdir(reserved);
+			if (!check_tile(tile, td, true)) return *result;
+
+			/* The reserved path can pass through the destination of the order, without stopping there. */
+			const Order &order = consist->current_order;
+			if (HasStationTileRail(tile) && order.IsBaseStationOrder() && order.GetDestination() == GetStationIndex(tile)) {
+				if (order.IsType(OT_GOTO_WAYPOINT) && order.GetWaypointFlags().Test(OrderWaypointFlag::Reverse)) return true;
+				if (!orders.SwitchToNextOrder(true)) return true;
+			}
+		}
+	}
+
+	/* Continue along the path which the pathfinder chooses, the first tile of which has already been checked or is occupied by the train. */
+	for (uint hops = 0; hops < 8; hops++) {
+		const TileIndex origin_tile = tile;
+		bool first_tile = true;
+		bool on_origin_platform = (hops == 0) && IsRailStationTile(origin_tile);
+		const bool path_found = YapfTrainIteratePath(consist, origin_tile, td, [&](TileIndex t, Trackdir d) -> bool {
+			if (first_tile) {
+				first_tile = false;
+				return true;
+			}
+			tile = t;
+			td = d;
+			/* The rest of the platform which the train is on is reserved by the train itself. */
+			on_origin_platform = on_origin_platform && IsCompatibleTrainStationTile(t, origin_tile);
+			return check_tile(t, d, on_origin_platform);
+		});
+		if (result.has_value()) return *result;
+
+		/* If no path is found, don't hold the train. */
+		if (!path_found) return true;
+
+		/* The path ended at the destination of the current order, without stopping there. Continue towards the next order. */
+		const Order &order = consist->current_order;
+		const bool pass_through = (order.IsType(OT_GOTO_WAYPOINT) && !order.GetWaypointFlags().Test(OrderWaypointFlag::Reverse)) ||
+				(order.IsType(OT_GOTO_STATION) && (order.GetNonStopType() & ONSF_NO_STOP_AT_DESTINATION_STATION));
+		if (!pass_through || !orders.SwitchToNextOrder(true)) break;
+	}
+
+	return true;
+}
+
+/**
+ * Check whether a train which has finished loading at a station should keep waiting in it,
+ * because the first signal on its route can not be passed yet.
+ * @param consist The train.
+ * @return True if the train should keep waiting in the station.
+ */
+bool ShouldTrainWaitForSignalBeforeLeavingStation(Train *consist)
+{
+	bool wait = false;
+	if (_settings_game.vehicle.train_wait_for_signal_at_station && consist->force_proceed == TFP_NONE) {
+		/* Rate-limit re-checking while waiting */
+		if (consist->vehicle_flags.Test(VehicleFlag::WaitingForSignal) && consist->tick_counter % _settings_game.pf.path_backoff_interval != 0) return true;
+
+		wait = !CanTrainPassFirstSignalAfterStation(consist);
+	}
+
+	if (consist->vehicle_flags.Test(VehicleFlag::WaitingForSignal) != wait) {
+		consist->vehicle_flags.Set(VehicleFlag::WaitingForSignal, wait);
+		SetWindowWidgetDirty(WindowClass::VehicleView, consist->index, WID_VV_START_STOP);
+	}
+	return wait;
+}
+
+/**
  * Get the location of the next station to visit.
  * @param station Next station to visit.
  * @return Location of the new station.

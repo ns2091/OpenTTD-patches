@@ -101,6 +101,8 @@ inline bool TryPathReserve(Train *consist, bool mark_as_stuck = false, bool firs
 	return TryPathReserveWithResultFlags(consist, mark_as_stuck, first_tile_okay) & TPRRF_RESERVATION_OK;
 }
 
+bool ShouldTrainWaitForSignalBeforeLeavingStation(Train *consist);
+
 void DeleteVisibleTrain(Train *v);
 
 void CheckBreakdownFlags(Train *v);

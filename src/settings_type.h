@@ -870,6 +870,7 @@ struct VehicleSettings {
 	bool                   roadveh_articulated_overtaking;        ///< enable articulated road vehicles overtaking other vehicles
 	bool                   roadveh_cant_quantum_tunnel;           ///< enable or disable vehicles quantum tunnelling through other vehicles when blocked
 	bool                   drive_through_train_depot;             ///< enable drive-through train depot emulation
+	bool                   train_wait_for_signal_at_station;      ///< trains which have finished loading wait in the station until the next signal on their route can be passed
 	uint16_t               through_load_speed_limit;              ///< maximum speed for through load
 	uint16_t               rail_depot_speed_limit;                ///< maximum speed entering/existing rail depots
 	bool                   non_leading_engines_keep_name;         ///< allow engines moved to a non-leading position to retain their custom name

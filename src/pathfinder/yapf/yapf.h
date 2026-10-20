@@ -16,6 +16,7 @@
 #include "../../ship.h"
 #include "../../roadveh.h"
 #include "../pathfinder_type.h"
+#include <functional>
 
 /**
  * Finds the best path for given ship using YAPF.
@@ -100,5 +101,19 @@ bool YapfTrainCheckDepotReverse(const Train *v, TileIndex forward_depot, TileInd
  * @return True if the path could be extended to a safe tile.
  */
 bool YapfTrainFindNearestSafeTile(const Train *v, TileIndex tile, Trackdir td, bool override_railtype);
+
+/** Callback for #YapfTrainIteratePath, return false to stop iterating. */
+using YapfTrainPathTileProc = std::function<bool(TileIndex tile, Trackdir td)>;
+
+/**
+ * Find the best path for a train from the given position to the destination of its current order using YAPF,
+ * and visit the tiles of that path in driving order. Nothing is reserved.
+ * @param v    The train.
+ * @param tile The tile to start the path from.
+ * @param td   The track direction to start the path from.
+ * @param proc Called for each tile and track direction of the path, starting with the given tile.
+ * @return True if a path to the destination was found.
+ */
+bool YapfTrainIteratePath(const Train *v, TileIndex tile, Trackdir td, const YapfTrainPathTileProc &proc);
 
 #endif /* YAPF_H */

@@ -238,6 +238,9 @@ STR_CONFIG_SETTING_ROADVEH_CANT_QUANTUM_TUNNEL_HELPTEXT         :Disable road ve
 STR_CONFIG_SETTING_DRIVE_THROUGH_TRAIN_DEPOT                    :Drive-through train depots: {STRING2}
 STR_CONFIG_SETTING_DRIVE_THROUGH_TRAIN_DEPOT_HELPTEXT           :Enable emulation of drive-through train depots. Trains can move between depots placed back to back, optionally with intermediary depots in between.{}When enabled, trains are not forced to leave depots driving forward.
 
+STR_CONFIG_SETTING_TRAIN_WAIT_FOR_SIGNAL_AT_STATION             :Trains wait at stations until the next signal can be passed: {STRING2}
+STR_CONFIG_SETTING_TRAIN_WAIT_FOR_SIGNAL_AT_STATION_HELPTEXT    :When enabled, a train which has finished loading and unloading at a station does not depart while the first signal on its route to its next stop can not be passed yet. The train keeps waiting in the station (and keeps loading) until it can pass the signal.{}A block signal can be passed when it shows green. A path signal can be passed when the track behind it, up to the following signal, is not reserved by another train.{}If there is no signal between the station and the next stop, the train departs as usual.
+
 STR_CONFIG_SETTING_WARN_RESTRICTION_WAIT_VEHICLE                :Warn if train is stuck due to a routing restriction: {STRING2}
 STR_CONFIG_SETTING_WARN_RESTRICTION_WAIT_VEHICLE_HELPTEXT       :Trigger messages about trains which are stuck waiting at a path signal for a long time because of a routing restriction.
 
@@ -1644,6 +1647,7 @@ STR_VEHICLE_STATUS_BROKEN_DOWN_VEL                              :{RED}Broken dow
 STR_VEHICLE_STATUS_BROKEN_DOWN_VEL_SHORT                        :{RED}Broken down - {STRING1}
 STR_VEHICLE_STATUS_TRAIN_STUCK_WAIT_RESTRICTION                 :{ORANGE}Waiting due to routing restriction
 STR_VEHICLE_STATUS_TRAIN_WAITING_TIMETABLE                      :{ORANGE}Waiting due to timetable
+STR_VEHICLE_STATUS_TRAIN_WAITING_FOR_SIGNAL                     :{ORANGE}Waiting in station for signal
 STR_VEHICLE_STATUS_TRAIN_REVERSING                              :{ORANGE}Reversing, {VELOCITY}
 STR_VEHICLE_STATUS_TRAIN_MOVING_DEPOT                           :{ORANGE}Moving in depot
 

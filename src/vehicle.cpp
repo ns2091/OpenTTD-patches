@@ -3524,6 +3524,8 @@ void Vehicle::BeginLoading()
 		PrepareUnload(this);
 	}
 
+	this->vehicle_flags.Reset(VehicleFlag::WaitingForSignal);
+
 	DirtyVehicleListWindowForVehicle(this);
 	SetWindowWidgetDirty(WindowClass::VehicleView, this->index, WID_VV_START_STOP);
 	SetWindowDirty(WindowClass::VehicleDetails, this->index);
@@ -3580,6 +3582,7 @@ void Vehicle::LeaveStation()
 
 	this->vehicle_flags.Reset(VehicleFlag::ConditionalOrderWait);
 	this->vehicle_flags.Reset(VehicleFlag::StopLoading);
+	this->vehicle_flags.Reset(VehicleFlag::WaitingForSignal);
 
 	TileIndex station_tile = INVALID_TILE;
 
@@ -3813,6 +3816,9 @@ void Vehicle::HandleLoading(bool mode)
 				if (!mode && this->type == VehicleType::Train && Train::From(this)->flags.Test(VehicleRailFlag::AdvanceInPlatform)) this->AdvanceLoadingInStation();
 				return;
 			}
+
+			/* Trains may have to keep waiting until the next signal on their route can be passed */
+			if (this->type == VehicleType::Train && ShouldTrainWaitForSignalBeforeLeavingStation(Train::From(this))) return;
 
 			this->LeaveStation();
 
@@ -4638,6 +4644,7 @@ void DumpVehicleFlagsGeneric(const Vehicle *v, T dump, U dump_header)
 	dump('Q', "HaveSlot",                   v->vehicle_flags.Test(VehicleFlag::HaveSlot));
 	dump('W', "ConditionalOrderWait",       v->vehicle_flags.Test(VehicleFlag::ConditionalOrderWait));
 	dump('r', "ReplacementPending",         v->vehicle_flags.Test(VehicleFlag::ReplacementPending));
+	dump('g', "WaitingForSignal",           v->vehicle_flags.Test(VehicleFlag::WaitingForSignal));
 	dump_header("vcf:", "cached_veh_flags:");
 	dump('l', "VCF_LAST_VISUAL_EFFECT",     HasBit(v->vcache.cached_veh_flags, VCF_LAST_VISUAL_EFFECT));
 	dump('z', "VCF_GV_ZERO_SLOPE_RESIST",   HasBit(v->vcache.cached_veh_flags, VCF_GV_ZERO_SLOPE_RESIST));

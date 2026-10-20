@@ -1000,6 +1000,7 @@ SettingsContainer &GetSettingsTree()
 				routing->Add(new SettingEntry("pf.forbid_90_deg"));
 				routing->Add(new SettingEntry("pf.reroute_rv_on_layout_change"));
 				routing->Add(new SettingEntry("vehicle.drive_through_train_depot"));
+				routing->Add(new SettingEntry("vehicle.train_wait_for_signal_at_station"));
 			}
 
 			SettingsPage *orders = vehicles->Add(new SettingsPage(STR_CONFIG_SETTING_VEHICLES_ORDERS));

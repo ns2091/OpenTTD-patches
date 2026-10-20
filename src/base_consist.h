@@ -52,6 +52,7 @@ enum class VehicleFlag : uint8_t {
 	HaveSlot                    = 16, ///< Vehicle has 1 or more slots.
 	ConditionalOrderWait        = 17, ///< Vehicle is waiting due to conditional order loop.
 	ReplacementPending          = 18, ///< Autoreplace or template replacement is pending, vehicle should visit the depot.
+	WaitingForSignal            = 19, ///< Train has finished loading, but is waiting in the station until the next signal on its route can be passed.
 };
 
 /** Bitset of \c VehicleFlag elements. */

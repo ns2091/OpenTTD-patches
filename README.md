@@ -54,6 +54,7 @@ The TT-Forums thread for this patchpack can be found [here](https://www.tt-forum
 * Add information about train full and empty loads and achievable speeds to the train info window.
 * Add setting to sort track types by category and speed.
 * Add a setting for whether to pathfind up to back of a one-way path signal.
+* Add a setting for trains which have finished loading to wait in the station until the first signal on their route can be passed.
 * Multi-aspect signal graphics.  
   This requires a NewGRF which supports this and realistic train braking.
 * No-entry signals.  

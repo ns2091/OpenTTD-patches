@@ -4337,7 +4337,7 @@ public:
 				}
 
 				case OT_LOADING:
-					append(STR_VEHICLE_STATUS_LOADING_UNLOADING);
+					append(v->vehicle_flags.Test(VehicleFlag::WaitingForSignal) ? STR_VEHICLE_STATUS_TRAIN_WAITING_FOR_SIGNAL : STR_VEHICLE_STATUS_LOADING_UNLOADING);
 					break;
 
 				case OT_LOADING_ADVANCE:

@@ -202,3 +202,7 @@ STR_ERROR_SITE_UNSUITABLE_FOR_DIAGONAL_TUNNEL                   :{WHITE}斜面�
 STR_ERROR_DIAGONAL_TUNNEL_EMERGES                               :{WHITE}適切な出口に達する前にトンネルが地上に出てしまいます
 STR_ERROR_NOT_POSSIBLE_ON_DIAGONAL_TUNNEL_PORTAL                :{WHITE}斜めトンネルの入り口では実行できません
 STR_LAI_RAIL_DESCRIPTION_DIAGONAL_TUNNEL                        :鉄道トンネル(斜め)
+
+STR_CONFIG_SETTING_TRAIN_WAIT_FOR_SIGNAL_AT_STATION             :次の信号を通過できるまで列車を駅で待機させる: {STRING}
+STR_CONFIG_SETTING_TRAIN_WAIT_FOR_SIGNAL_AT_STATION_HELPTEXT    :有効にすると、駅での積み降ろしを終えた列車は、次の停車駅までの経路上にある直近の信号を通過できるようになるまで発車せず、駅で待機します (待機中も積み込みを続けます){}閉塞信号は青信号のときに通過できます。経路信号は、その先の次の信号までの線路が他の列車に予約されていないときに通過できます{}駅から次の停車駅までの間に信号がない場合は、通常どおり発車します
+STR_VEHICLE_STATUS_TRAIN_WAITING_FOR_SIGNAL                     :{ORANGE}信号待ちのため駅で待機中

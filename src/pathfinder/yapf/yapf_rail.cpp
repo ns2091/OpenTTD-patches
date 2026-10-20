@@ -744,6 +744,35 @@ public:
 		bool reversed = (node->cost != 0);
 		return reversed;
 	}
+
+	static bool stIteratePath(const Train *v, TileIndex tile, Trackdir td, const YapfTrainPathTileProc &proc)
+	{
+		Tpf pf1;
+		return pf1.IteratePath(v, tile, td, proc);
+	}
+
+	inline bool IteratePath(const Train *v, TileIndex tile, Trackdir td, const YapfTrainPathTileProc &proc)
+	{
+		/* set origin and destination nodes */
+		Yapf().SetOrigin(tile, td);
+		Yapf().SetTreatFirstRedTwoWaySignalAsEOL(false);
+		Yapf().SetDestination(v);
+
+		/* find the best path */
+		if (!Yapf().FindPath(v)) return false;
+
+		/* walk through the path back to the origin */
+		std::vector<const Node *> path;
+		for (const Node *node = Yapf().GetBestNode(); node != nullptr; node = node->parent) {
+			path.push_back(node);
+		}
+
+		/* visit the tiles of the path, starting from the origin */
+		for (auto it = path.rbegin(); it != path.rend(); ++it) {
+			if (!(*it)->template IterateTiles<CYapfFollowRailT>(v, Yapf(), proc)) break;
+		}
+		return true;
+	}
 };
 
 template <class Tpf_, class Ttrack_follower, template <class Types> class TdestinationT, template <class Types> class TfollowT>
@@ -927,6 +956,13 @@ bool YapfTrainFindNearestSafeTile(const Train *v, TileIndex tile, Trackdir td, b
 	return _settings_game.pf.forbid_90_deg
 		? CYapfAnySafeTileRailNo90::stFindNearestSafeTile(v, tile, td, override_railtype)
 		: CYapfAnySafeTileRail::stFindNearestSafeTile(v, tile, td, override_railtype);
+}
+
+bool YapfTrainIteratePath(const Train *v, TileIndex tile, Trackdir td, const YapfTrainPathTileProc &proc)
+{
+	return _settings_game.pf.forbid_90_deg
+		? CYapfRailNo90::stIteratePath(v, tile, td, proc)
+		: CYapfRail::stIteratePath(v, tile, td, proc);
 }
 
 /** if any track changes, this counter is incremented - that will invalidate segment cost cache */
