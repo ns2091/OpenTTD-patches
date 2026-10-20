@@ -8,6 +8,7 @@
 /** @file station_gui.cpp The GUI for stations. */
 
 #include "stdafx.h"
+#include "airport_capacity.h"
 #include "debug.h"
 #include "gui.h"
 #include "querystring_gui.h"
@@ -947,6 +948,9 @@ static constexpr std::initializer_list<NWidgetPart> _nested_station_view_widgets
 		NWidget(NWID_VSCROLLBAR, Colours::Grey, WID_SV_SCROLLBAR),
 	EndContainer(),
 	NWidget(WWT_PANEL, Colours::Grey, WID_SV_ACCEPT_RATING_LIST), SetMinimalSize(249, 23), SetResize(1, 0), EndContainer(),
+	NWidget(NWID_SELECTION, Colours::Invalid, WID_SV_AIRPORT_CAPACITY_SEL),
+		NWidget(WWT_PANEL, Colours::Grey, WID_SV_AIRPORT_CAPACITY), SetMinimalSize(249, 0), SetResize(1, 0), EndContainer(),
+	EndContainer(),
 	NWidget(NWID_HORIZONTAL, NWidContainerFlag::EqualSize),
 		NWidget(WWT_PUSHTXTBTN, Colours::Grey, WID_SV_ACCEPTS_RATINGS), SetMinimalSize(46, 12), SetResize(1, 0), SetFill(1, 1),
 				SetStringTip(STR_STATION_VIEW_RATINGS_BUTTON, STR_STATION_VIEW_RATINGS_TOOLTIP),
@@ -1401,6 +1405,8 @@ struct StationViewWindow : public Window {
 	uint expand_shrink_width = 0; ///< The width allocated to the expand/shrink 'button'
 	int rating_lines = RATING_LINES; ///< Number of lines in the cargo ratings view.
 	int accepts_lines = ACCEPTS_LINES; ///< Number of lines in the accepted cargo view.
+	int airport_capacity_lines = 1; ///< Number of lines in the airport capacity view.
+	AirportCapacityInfo airport_capacity{}; ///< Cached airport capacity estimate.
 	int line_height = 0; ///< Height of a cargo line.
 	Dimension cargo_icon_size{}; ///< Size of largest cargo icon.
 	Scrollbar *vscroll = nullptr;
@@ -1454,6 +1460,8 @@ struct StationViewWindow : public Window {
 		const Station *st = Station::Get(window_number);
 		this->CreateNestedTree();
 		this->GetWidget<NWidgetStacked>(WID_SV_CLOSE_AIRPORT_SEL)->SetDisplayedPlane(st->facilities.Test(StationFacility::Airport) ? 0 : SZSP_NONE);
+		this->GetWidget<NWidgetStacked>(WID_SV_AIRPORT_CAPACITY_SEL)->SetDisplayedPlane(st->facilities.Test(StationFacility::Airport) ? 0 : SZSP_HORIZONTAL);
+		this->airport_capacity = GetAirportCapacityInfo(st);
 		this->vscroll = this->GetScrollbar(WID_SV_SCROLLBAR);
 		/* Nested widget tree creation is done in two steps to ensure that this->GetWidget<NWidgetCore>(WID_SV_ACCEPTS_RATINGS) exists in UpdateWidgetSize(). */
 		this->FinishInitNested(window_number);
@@ -1548,6 +1556,10 @@ struct StationViewWindow : public Window {
 				size.height = ((this->GetWidget<NWidgetCore>(WID_SV_ACCEPTS_RATINGS)->GetString() == STR_STATION_VIEW_RATINGS_BUTTON) ? this->accepts_lines : this->rating_lines) * GetCharacterHeight(FontSize::Normal) + padding.height;
 				break;
 
+			case WID_SV_AIRPORT_CAPACITY:
+				size.height = this->airport_capacity_lines * GetCharacterHeight(FontSize::Normal) + padding.height;
+				break;
+
 			case WID_SV_GROUP_BY:
 			case WID_SV_SORT_BY: {
 				uint width = 0;
@@ -1567,6 +1579,11 @@ struct StationViewWindow : public Window {
 	{
 		if (widget == WID_SV_RENAME) {
 			GuiShowTooltips(this, GetEncodedString(STR_STATION_VIEW_RENAME_TOOLTIP_EXTRA, STR_STATION_VIEW_EDIT_TOOLTIP, STR_BUTTON_DEFAULT), close_cond);
+			return true;
+		}
+
+		if (widget == WID_SV_AIRPORT_CAPACITY) {
+			GuiShowTooltips(this, GetEncodedString(STR_JUST_RAW_STRING, this->GetAirportCapacityTooltip()), close_cond);
 			return true;
 		}
 
@@ -1615,6 +1632,13 @@ struct StationViewWindow : public Window {
 		this->SetWidgetDisabledState(WID_SV_CLOSE_AIRPORT, !st->facilities.Test(StationFacility::Airport) || st->owner != _local_company || st->owner == OWNER_NONE); // Also consider SE, where _local_company == OWNER_NONE
 		this->SetWidgetLoweredState(WID_SV_CLOSE_AIRPORT, st->facilities.Test(StationFacility::Airport) && st->airport.blocks.Test(AirportBlock::AirportClosed));
 
+		/* Show or hide the airport capacity, when an airport has been built or removed. */
+		if (this->GetWidget<NWidgetStacked>(WID_SV_AIRPORT_CAPACITY_SEL)->SetDisplayedPlane(st->facilities.Test(StationFacility::Airport) ? 0 : SZSP_HORIZONTAL)) {
+			this->airport_capacity = GetAirportCapacityInfo(st);
+			this->ReInit();
+			return;
+		}
+
 		extern const Station *_viewport_highlight_station;
 		this->SetWidgetDisabledState(WID_SV_CATCHMENT, st->facilities.None());
 		this->SetWidgetLoweredState(WID_SV_CATCHMENT, _viewport_highlight_station == st);
@@ -1636,6 +1660,15 @@ struct StationViewWindow : public Window {
 				int lines = this->DrawCargoRatings(r);
 				if (lines > this->rating_lines) { // Resize the widget, and perform re-initialization of the window.
 					this->rating_lines = lines;
+					this->ReInit();
+					return;
+				}
+			}
+
+			if (st->facilities.Test(StationFacility::Airport)) {
+				int lines = this->DrawAirportCapacity(this->GetWidget<NWidgetBase>(WID_SV_AIRPORT_CAPACITY)->GetCurrentRect());
+				if (lines > this->airport_capacity_lines) { // Resize the widget, and perform re-initialization of the window.
+					this->airport_capacity_lines = lines;
 					this->ReInit();
 					return;
 				}
@@ -2058,6 +2091,54 @@ struct StationViewWindow : public Window {
 	}
 
 	/**
+	 * Draw the scheduled aircraft movements compared to the airport capacity in the #WID_SV_AIRPORT_CAPACITY widget.
+	 * @param r Rectangle of the widget.
+	 * @return Number of lines needed for drawing the airport capacity.
+	 */
+	int DrawAirportCapacity(const Rect &r) const
+	{
+		const AirportCapacityInfo &info = this->airport_capacity;
+		if (!info.valid) return 1;
+
+		StringID period;
+		if (EconTime::UsingWallclockUnits()) {
+			period = ReplaceWallclockMinutesUnit() ? STR_STATION_VIEW_AIRPORT_CAPACITY_PER_PRODUCTION_INTERVAL : STR_STATION_VIEW_AIRPORT_CAPACITY_PER_MINUTE;
+		} else {
+			period = STR_STATION_VIEW_AIRPORT_CAPACITY_PER_MONTH;
+		}
+
+		TextColour colour = TextColour::Green;
+		if (info.utilisation >= 100) {
+			colour = TextColour::Red;
+		} else if (info.utilisation >= 80) {
+			colour = TextColour::Yellow;
+		}
+
+		Rect tr = r.Shrink(WidgetDimensions::scaled.framerect);
+		int bottom = DrawStringMultiLine(tr.left, tr.right, tr.top, INT32_MAX, GetString(STR_STATION_VIEW_AIRPORT_CAPACITY,
+				period, colour, info.scheduled_movements, 1, info.capacity_movements, 1, colour, info.utilisation));
+		return CeilDiv(bottom - r.top - WidgetDimensions::scaled.framerect.top, GetCharacterHeight(FontSize::Normal));
+	}
+
+	/**
+	 * Get the tooltip of the #WID_SV_AIRPORT_CAPACITY widget.
+	 * @return The tooltip text.
+	 */
+	std::string GetAirportCapacityTooltip() const
+	{
+		const AirportCapacityInfo &info = this->airport_capacity;
+		std::string text = GetString(STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP);
+		if (!info.valid) return text;
+
+		AppendStringInPlace(text, STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP_SCHEDULED, info.scheduled_movements / 2, 1, info.aircraft);
+		if (info.estimated_aircraft > 0) AppendStringInPlace(text, STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP_ESTIMATED, info.estimated_aircraft);
+		if (info.unknown_aircraft > 0) AppendStringInPlace(text, STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP_UNKNOWN, info.unknown_aircraft);
+		AppendStringInPlace(text, info.measured ? STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP_OCCUPANCY_MEASURED : STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP_OCCUPANCY_STANDARD,
+				info.occupancy_per_flight);
+		return text;
+	}
+
+	/**
 	 * Draw cargo ratings in the #WID_SV_ACCEPT_RATING_LIST widget.
 	 * @param r Rectangle of the widget.
 	 * @return Number of lines needed for drawing the cargo ratings.
@@ -2418,6 +2499,16 @@ struct StationViewWindow : public Window {
 				this->ReInit();
 			}
 		}
+	}
+
+	void OnHundredthTick() override
+	{
+		const Station *st = Station::Get(this->window_number);
+		if (!st->facilities.Test(StationFacility::Airport)) return;
+
+		/* Orders, timetables and the measured runway usage change over time, so update the estimate regularly. */
+		this->airport_capacity = GetAirportCapacityInfo(st);
+		this->SetWidgetDirty(WID_SV_AIRPORT_CAPACITY);
 	}
 
 	bool IsNewGRFInspectable() const override

@@ -733,6 +733,20 @@ struct GoodsEntry {
 	uint8_t ConvertState() const;
 };
 
+/**
+ * Statistics of how long aircraft keep the blocks of an airport reserved.
+ * These are only used to estimate the capacity of the airport, and are not saved.
+ */
+struct AirportBlockUsageStats {
+	static constexpr uint NUM_TRACKED_BLOCKS = 32;  ///< Number of (lowest) airport blocks which are tracked, this includes all runways and helipads.
+	static constexpr uint32_t MAX_LANDINGS = 64;    ///< Number of landings after which the statistics are halved, to follow changes in traffic.
+
+	std::array<uint64_t, NUM_TRACKED_BLOCKS> reserve_tick{};          ///< Tick at which each block was reserved by an aircraft, 0 if not reserved.
+	std::array<bool, NUM_TRACKED_BLOCKS> reserve_helicopter{};        ///< Whether each block was reserved by a helicopter.
+	std::array<std::array<uint32_t, NUM_TRACKED_BLOCKS>, 2> usage{};  ///< Total ticks for which each block was reserved, by aeroplanes [0] and helicopters [1].
+	std::array<uint32_t, 2> landings{};                               ///< Number of landings by aeroplanes [0] and helicopters [1].
+};
+
 /** All airport-related information. Only valid if tile != INVALID_TILE. */
 struct Airport : public TileArea {
 	Airport() : TileArea(INVALID_TILE, 0, 0) {}
@@ -743,6 +757,12 @@ struct Airport : public TileArea {
 	Direction rotation = Direction::Invalid; ///< How this airport is rotated.
 
 	PersistentStorage *psa = nullptr; ///< Persistent storage for NewGRF airports.
+
+	std::unique_ptr<AirportBlockUsageStats> block_usage; ///< NOSAVE: Statistics of how long aircraft reserve the blocks of this airport.
+
+	void RecordBlockReservation(AirportBlocks reserved, bool helicopter);
+	void RecordBlockRelease(AirportBlocks released);
+	void RecordLanding(bool helicopter);
 
 	/**
 	 * Get the AirportSpec that from the airport type of this airport. If there

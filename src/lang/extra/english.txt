@@ -1564,6 +1564,17 @@ STR_STATION_VIEW_CARGO_LINE_TOOLTIP                             :{STRING} ({COMM
 
 STR_STATION_VIEW_SUPPLY_RATINGS_TITLE_PRODUCTION_INTERVAL       :{BLACK}Supply per production interval and local rating:
 
+STR_STATION_VIEW_AIRPORT_CAPACITY                               :{BLACK}Aircraft movements {STRING}: {COLOUR}{DECIMAL}{BLACK} / {DECIMAL} ({COLOUR}{NUM}%{BLACK})
+STR_STATION_VIEW_AIRPORT_CAPACITY_PER_MONTH                     :per month
+STR_STATION_VIEW_AIRPORT_CAPACITY_PER_MINUTE                    :per minute
+STR_STATION_VIEW_AIRPORT_CAPACITY_PER_PRODUCTION_INTERVAL       :per production interval
+STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP                       :{BLACK}Scheduled aircraft movements (landings and take-offs), compared to the number of movements the airport can handle without aircraft having to circle before landing, or wait for the runway after loading. This assumes evenly spaced flights, and is limited by how long each flight occupies the runways (or the landing area and helipads of heliports).
+STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP_SCHEDULED             :{}{}Scheduled: {DECIMAL} landings and take-offs each, by {COMMA} aircraft
+STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP_ESTIMATED             :{}{COMMA} of these aircraft {P has have} no complete timetable, the duration of previous journeys is used instead
+STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP_UNKNOWN               :{}{COMMA} aircraft {P "is" "are"} not included, as {P "its journey time is" "their journey times are"} unknown
+STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP_OCCUPANCY_MEASURED    :{}Runway time per flight: {TT_TICKS} (measured at this airport)
+STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP_OCCUPANCY_STANDARD    :{}Runway time per flight: {TT_TICKS} (standard value, not yet measured at this airport)
+
 STR_VEHICLE_LIST_AGE                                            :{STRING2}, Age: {COMMA} year{P "" s} ({COMMA})
 STR_VEHICLE_LIST_AGE_RED                                        :{STRING2}, Age: {RED}{COMMA} {BLACK}year{P "" s} ({COMMA})
 STR_VEHICLE_LIST_CARGO_LIST                                     :{STRING2}, Cargoes: {CARGO_LIST}

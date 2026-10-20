@@ -1796,6 +1796,8 @@ static void AircraftEventHandler_Flying(Aircraft *v, const AirportFTAClass *apc)
 					 * they all have heading LANDING). And also occupy that block! */
 					v->pos = current->next_position;
 					st->airport.blocks.Set(apc->layout[v->pos].blocks);
+					st->airport.RecordBlockReservation(apc->layout[v->pos].blocks, v->subtype == AIR_HELICOPTER);
+					st->airport.RecordLanding(v->subtype == AIR_HELICOPTER);
 					return;
 				}
 				v->cur_speed = tcur_speed;
@@ -1908,6 +1910,7 @@ static void AirportClearBlock(const Aircraft *v, const AirportFTAClass *apc)
 		}
 
 		st->airport.blocks.Reset(apc->layout[v->previous_pos].blocks);
+		st->airport.RecordBlockRelease(apc->layout[v->previous_pos].blocks);
 	}
 }
 
@@ -2041,6 +2044,7 @@ static bool AirportSetBlocks(Aircraft *v, const AirportFTA *current_pos, const A
 
 		if (next->blocks != AirportBlock::Nothing) {
 			st->airport.blocks.Set(blocks); // occupy next block
+			st->airport.RecordBlockReservation(blocks, v->subtype == AIR_HELICOPTER);
 		}
 	}
 	return true;
@@ -2086,6 +2090,7 @@ static bool FreeTerminal(Aircraft *v, uint8_t i, uint8_t last_terminal)
 			/* TERMINAL# HELIPAD# */
 			v->state = _airport_terminal_mapping[i].state; // start moving to that terminal/helipad
 			st->airport.blocks.Set(_airport_terminal_mapping[i].blocks); // occupy terminal/helipad
+			st->airport.RecordBlockReservation(_airport_terminal_mapping[i].blocks, v->subtype == AIR_HELICOPTER);
 			return true;
 		}
 	}

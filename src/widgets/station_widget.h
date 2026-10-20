@@ -32,6 +32,8 @@ enum StationViewWidgets : WidgetID {
 	WID_SV_CATCHMENT,          ///< Toggle catchment area highlight.
 	WID_SV_DEPARTURES,         ///< Departures button.
 	WID_SV_HISTORY,            ///< Cargo history button.
+	WID_SV_AIRPORT_CAPACITY,     ///< Scheduled aircraft movements compared to the airport capacity.
+	WID_SV_AIRPORT_CAPACITY_SEL, ///< Container for the airport capacity, which can be hidden.
 };
 
 /** Widgets of the #CompanyStationsWindow class. */

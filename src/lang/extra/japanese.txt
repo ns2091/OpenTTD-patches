@@ -39,6 +39,17 @@ STR_MAPGEN_SNOW_LINE_QUERY_CAPT                                 :{WHITE}雪線�
 STR_STATION_VIEW_DEPARTURES_BUTTON                              :{BLACK}発車標
 STR_STATION_VIEW_DEPARTURES_TOOLTIP                             :{BLACK}発車標を表示します。
 
+STR_STATION_VIEW_AIRPORT_CAPACITY                               :{BLACK}{STRING}の発着回数: {COLOUR}{DECIMAL}{BLACK} / {DECIMAL} ({COLOUR}{NUM}%{BLACK})
+STR_STATION_VIEW_AIRPORT_CAPACITY_PER_MONTH                     :1か月あたり
+STR_STATION_VIEW_AIRPORT_CAPACITY_PER_MINUTE                    :1分あたり
+STR_STATION_VIEW_AIRPORT_CAPACITY_PER_PRODUCTION_INTERVAL       :生産間隔あたり
+STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP                       :{BLACK}設定便数による発着回数（着陸と離陸）と、空港の許容発着能力の比較です。許容発着能力は、空港上空に到着した航空機が空中待機せずに直ちに着陸でき、積載が終了した航空機が直ちに離陸できる発着回数です。便が等間隔で運航されることを前提に、1便が滑走路（ヘリポートでは着陸区域とヘリパッド）を占有する時間から求めます。
+STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP_SCHEDULED             :{}{}設定便数: 着陸・離陸 各{DECIMAL}回（{COMMA}機）
+STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP_ESTIMATED             :{}うち{COMMA}機はダイヤが未完成のため、前回までの所要時間から推定しています
+STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP_UNKNOWN               :{}所要時間が不明な{COMMA}機は含まれていません
+STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP_OCCUPANCY_MEASURED    :{}1便あたりの滑走路占有時間: {TT_TICKS}（この空港での実測値）
+STR_STATION_VIEW_AIRPORT_CAPACITY_TOOLTIP_OCCUPANCY_STANDARD    :{}1便あたりの滑走路占有時間: {TT_TICKS}（標準値。この空港ではまだ実測されていません）
+
 STR_DEPARTURES_CAPTION                                          :{WHITE}{STRING} 発車標
 STR_DEPARTURES_DEPARTURES                                       :{BLACK}{TINY_FONT}発車
 STR_DEPARTURES_ARRIVALS                                         :{BLACK}{TINY_FONT}到着

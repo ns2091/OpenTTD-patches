@@ -2961,6 +2961,7 @@ CommandCost CmdBuildAirport(DoCommandFlags flags, TileIndex tile, uint8_t airpor
 		st->airport.type = airport_type;
 		st->airport.layout = layout;
 		st->airport.blocks = {};
+		st->airport.block_usage.reset();
 		st->airport.rotation = rotation;
 
 		st->rect.BeforeAddRect(tile, w, h, StationRect::ADD_TRY);

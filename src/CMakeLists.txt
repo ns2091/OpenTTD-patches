@@ -57,6 +57,8 @@ add_files(
     aircraft_gui.cpp
     airport.cpp
     airport.h
+    airport_capacity.cpp
+    airport_capacity.h
     airport_gui.cpp
     animated_tile.cpp
     animated_tile.h
