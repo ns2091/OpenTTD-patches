@@ -1564,7 +1564,7 @@ STR_STATION_VIEW_CARGO_LINE_TOOLTIP                             :{STRING} ({COMM
 
 STR_STATION_VIEW_SUPPLY_RATINGS_TITLE_PRODUCTION_INTERVAL       :{BLACK}Supply per production interval and local rating:
 
-STR_STATION_VIEW_AIRPORT_CAPACITY                               :{BLACK}Aircraft movements {STRING}: {COLOUR}{DECIMAL}{BLACK} / {DECIMAL} ({COLOUR}{NUM}%{BLACK})
+STR_STATION_VIEW_AIRPORT_CAPACITY                               :{BLACK}Aircraft movements {STRING}: {COLOUR}{DECIMAL}{BLACK} scheduled / {DECIMAL} capacity ({COLOUR}{NUM}%{BLACK})
 STR_STATION_VIEW_AIRPORT_CAPACITY_PER_MONTH                     :per month
 STR_STATION_VIEW_AIRPORT_CAPACITY_PER_MINUTE                    :per minute
 STR_STATION_VIEW_AIRPORT_CAPACITY_PER_PRODUCTION_INTERVAL       :per production interval
